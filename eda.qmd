@@ -1,0 +1,37 @@
+---
+title: "Exploratory Data Analysis"
+author: "Shelby Tisdale"
+format: html
+---
+
+```{r}
+#| label: load-data-and-packages
+
+# load packages
+library(tidyverse)
+
+# load data
+fed_expenditures <- read_csv("data/federal_expenditures_2015_2022.csv")
+```
+
+```{r}
+#| label: eda
+#| fig-height: 15
+#| fig-width: 8
+fed_expenditures |>
+  select(state, fiscal_year, fed_unliquidated, unobligated_balance) |>
+  pivot_longer(cols = fed_unliquidated:unobligated_balance,
+               names_to = "Type",
+               values_to = "Amount") |>
+  filter(fiscal_year == 2022 & state != "U.S. TOTAL") |>
+  ggplot(aes(x = Amount, y = state)) +
+  geom_col(aes(x = Amount, y = Type, fill = Type), show.legend = TRUE) +
+  coord_cartesian(clip = "off") +
+  facet_wrap(~state, ncol = 1, strip.position = "left") +
+  theme_minimal() +
+  theme(axis.text.y=element_blank(), 
+      axis.ticks.y = element_blank(),
+      strip.text.y.left = element_text(angle = 0),
+      legend.position = "top")
+```
+
