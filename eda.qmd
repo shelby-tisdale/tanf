@@ -11,19 +11,19 @@ format: html
 library(tidyverse)
 
 # load data
-fed_expenditures <- read_csv("data/federal_expenditures_2015_2022.csv")
+expenditures <- read_csv("data/total_expenditures_2015_2022.csv")
 ```
 
 ```{r}
-#| label: eda
+#| label: eda-bar
 #| fig-height: 15
 #| fig-width: 8
-fed_expenditures |>
-  select(state, fiscal_year, fed_unliquidated, unobligated_balance) |>
-  pivot_longer(cols = fed_unliquidated:unobligated_balance,
+expenditures |>
+  select(state, fiscal_year, funds_awarded, total_expenditures, unobligated_balance) |>
+  pivot_longer(cols = funds_awarded:unobligated_balance,
                names_to = "Type",
                values_to = "Amount") |>
-  filter(fiscal_year == 2022 & state != "U.S. TOTAL") |>
+  filter(fiscal_year == 2019 & state != "U.S. TOTAL") |>
   ggplot(aes(x = Amount, y = state)) +
   geom_col(aes(x = Amount, y = Type, fill = Type), show.legend = TRUE) +
   coord_cartesian(clip = "off") +
@@ -34,4 +34,61 @@ fed_expenditures |>
       strip.text.y.left = element_text(angle = 0),
       legend.position = "top")
 ```
+```{r}
+#| label: eda-line
 
+expenditures |>
+  select(state, fiscal_year, unobligated_balance, funds_awarded) |>
+  filter(state != "U.S. TOTAL" & state != "DIST.OF COLUMBIA") |>
+  mutate(line_color = if_else(state == "MISSISSIPPI", "firebrick", "gray80")) |>
+  ggplot(aes(x = fiscal_year, y = unobligated_balance)) +
+  geom_line(aes(x = fiscal_year, y = unobligated_balance, group = state, color = line_color), show.legend = FALSE) +
+  coord_cartesian(clip = "off") +
+  scale_color_manual(values = c("firebrick", "gray80")) +
+  #facet_wrap(~state, ncol = 1, strip.position = "left") +
+  theme_minimal() +
+  theme(#axis.text.y=element_blank(), 
+      #axis.ticks.y = element_blank(),
+      #strip.text.y.left = element_text(angle = 0),
+      legend.position = "top")
+```
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+expenditures <- expenditures |>
+  mutate(percent_cash_assistance = basic_assistance / total_expenditures)
+
+expenditures |>
+  filter(state != "U.S. TOTAL" & state != "DIST.OF COLUMBIA") |>
+  ggplot(aes(x = log10(unobligated_balance), y = percent_cash_assistance*100), alpha = 0.5) +
+  geom_point() +
+  coord_cartesian(clip = "off") +
+  facet_wrap(~fiscal_year, nrow = 2, ncol = 4) +
+  theme_minimal()
+```
+```{r}
+#| fig-width: 10
+#| fig-height: 2
+expenditures |>
+  filter(state != "U.S. TOTAL" & state != "DIST. OF COLUMBIA") |>
+  ggplot(aes(x = funds_awarded, y = total_expenditures)) +
+  geom_point() +
+  facet_wrap(~fiscal_year, nrow = 1) +
+  theme_minimal()
+```
+
+```{r}
+#| label: segmented-bar
+
+# create a bar plot of total expenditures per year by state
+expenditures_bar <- expenditures |>
+  pivot_longer(cols = funds_awarded:unobligated_balance, names_to = "category", values_to = "amount") |>
+  group_by(category, state) |>
+  summarize(average_amount = mean(amount)) |>
+  filter(!is.na())
+
+expenditures_bar |>
+  filter(state == "MISSISSIPPI") |>
+  ggplot(aes(x = state)) +
+  geom_col(aes(y = amount))
