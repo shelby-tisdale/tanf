@@ -80,15 +80,41 @@ expenditures |>
 
 ```{r}
 #| label: segmented-bar
+#| fig-height: 12
+#| fig-width: 10
+
+expenditures_summary_1 <- expenditures_bar |>
+  group_by(category) |>
+  summarize(total = sum(average_amount)) |>
+  arrange(total)
 
 # create a bar plot of total expenditures per year by state
 expenditures_bar <- expenditures |>
   pivot_longer(cols = funds_awarded:unobligated_balance, names_to = "category", values_to = "amount") |>
   group_by(category, state) |>
-  summarize(average_amount = mean(amount)) |>
-  filter(!is.na())
+  summarize(average_amount = mean(amount), .groups = "drop") |>
+  mutate(category = case_when(
+    category %in% c("basic_assistance_no_subsidies") ~ "Direct Cash Assistance",
+    category %in% c("basic_assistance_subsidies", "other_assistance_foster",
+                    "non_assistance_welfare_foster", "child_welfare") ~ "Child Welfare, Adoption, and Foster Care",
+    category %in% c("other_assistance_juvenile_justice",
+                    "non_assistance_juvenile_justice",
+                    "children_youth_services") ~ "Juvenile Justice and Youth Services",
+    category %in% c("work_ed", "work_supports", "financial_ed") ~ "Work, Education, and Training Activities",
+    category %in% c("early_ed") ~ "Early Childcare and Education",
+    category %in% c("support__services", "pregnancy_prevention", "fatherhood_programs", "home_visiting") ~ "Family Support and Formation Services",
+    category %in% c("program_mgmt") ~ "Program Management",
+    category %in% c("other", "other_assistance_emergency", "non_assistance_emergency", "eitc_refundable", "short_term_benefits", "non_eitc_refundable") ~ "Other"
+  )) |>
+  filter(!is.na(category))
 
 expenditures_bar |>
-  filter(state == "MISSISSIPPI") |>
-  ggplot(aes(x = state)) +
-  geom_col(aes(y = amount))
+  mutate(category = fct_reorder(category, average_amount)) |>
+  ggplot(aes(y = fct_rev(state))) +
+  geom_col(aes(x = average_amount, fill = category), position = "fill") +
+  scale_fill_brewer(palette = "Dark2") +
+  theme_minimal() +
+  labs(y = NULL, x = "Average Amount of Funding Per Year")
+```
+
+
