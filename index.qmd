@@ -1,0 +1,78 @@
+---
+title: "TANF Visualizations"
+author: "Shelby Tisdale"
+format: html
+---
+
+```{r}
+#| label: load-packages-and-data
+
+# load packages
+library(tidyverse)
+
+# load data
+expenditures <- read_csv("data/total_expenditures_2015_2022.csv")
+```
+
+```{r}
+#| label: segmented-bar-all-categories
+#| fig-height: 12
+#| fig-width: 10
+
+# wrangle data for bar plot
+expenditures_bar <- expenditures |>
+  # pivot all columns except state and fiscal year
+  # create category and amount columns
+  pivot_longer(
+    cols = funds_awarded:unobligated_balance,
+    names_to = "category",
+    values_to = "amount"
+    ) |>
+  # calculate mean amount per category and state from 2015-2022
+  group_by(category, state) |>
+  summarize(average_amount = mean(amount), .groups = "drop") |>
+  # assign categories
+  mutate(
+    category = case_when(
+      category %in% c("basic_assistance_no_subsidies") ~
+        "Direct Cash Assistance",
+      category %in% c("basic_assistance_subsidies", "other_assistance_foster",
+                      "non_assistance_welfare_foster", "child_welfare") ~
+        "Child Welfare, Adoption, and Foster Care",
+      category %in% c("other_assistance_juvenile_justice",
+                      "non_assistance_juvenile_justice",
+                      "children_youth_services") ~
+        "Juvenile Justice and Youth Services",
+      category %in% c("work_ed", "work_supports", "financial_ed") ~
+        "Work, Education, and Training Activities",
+      category %in% c("early_ed") ~
+        "Early Childcare and Education",
+      category %in% c("support__services", "pregnancy_prevention",
+                    "fatherhood_programs", "home_visiting") ~
+        "Family Support and Formation Services",
+      category %in% c("program_mgmt") ~
+        "Program Management",
+      category %in% c("other", "other_assistance_emergency",
+                      "non_assistance_emergency", "eitc_refundable",
+                      "short_term_benefits", "non_eitc_refundable") ~
+        "Other"
+      #category == "unobligated_balance" ~ "Unobligated"
+  )) |>
+  # remove unnecessary values
+  filter(!is.na(category))
+
+expenditures_bar |>
+  mutate(category = fct_reorder(category, average_amount, .fun = mean)) |>
+  mutate(category = fct_relevel(category, "Other", after = 0)) |>
+  ggplot(aes(y = fct_rev(state))) +
+  geom_col(aes(x = average_amount, fill = category), position = "fill") +
+  scale_fill_brewer(palette = "Pastel1") +
+  theme_minimal() +
+  labs(y = NULL, x = "Average Amount of Funding Per Year",
+       title = "Average TANF Funds Spent by Category Per Year",
+       subtitle = "By State") +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(title = NULL, nrow = 4))
+
+```
+
