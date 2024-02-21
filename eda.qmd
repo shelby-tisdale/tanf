@@ -108,7 +108,7 @@ expenditures_bar |>
   mutate(category = fct_reorder(category, average_amount)) |>
   ggplot(aes(y = fct_rev(state))) +
   geom_col(aes(x = average_amount, fill = category), position = "fill") +
-  #scale_fill_brewer(palette = "Dark2") +
+  scale_fill_viridis_d(option = "magma") +
   theme_minimal() +
   labs(y = NULL, x = "Average Amount of Funding Per Year")
 ```
