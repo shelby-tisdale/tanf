@@ -1,0 +1,60 @@
+
+```{r}
+# load packages
+library(tidyverse)
+library(data.table)
+library(bit64)
+library(janitor)
+```
+
+```{r}
+
+# create function for loading data
+load_sipp <- function(directory) {
+  ds <- c(directory)
+  sipp <- fread(ds, sep = "|", select = c(
+    # ID VARS
+   "SHHADID", "SPANEL", "SSUID", "SWAVE", "PNUM", "MONTHCODE", "GHLFSAM",
+   "EHRESIDENCID", "EINTTYPE", "ERESIDENCEID","RIN_UNIV",
+   "THHLDSTATUS", "TST_INTV", "EPNPAR1", "EPNPAR2", "EPNCOHAB", "EPNSPOUSE",
+   "RPNCHILD1", "RPNCHILD2", "RPNCHILD3", "RPNCHILD4", "RPNCHILD5", "RPNCHILD6",
+   "RPNCHILD7", "RPNCHILD8", "RPNCHILD9", "RPNCHILD10", "RPNCHILD11",
+   "RPNCHILD12",
+    # WEIGHTS AND SAMPLING
+   "GVARSTR", "WPFINWGT",
+   # OTHER
+   "EANYKID", "EBDAD", "EBMOM", "ECLTH_SR1YN", "EJB1_BSLRYB", "EJB1_SCRNR",
+   "EMPF", "EMS_EHC", "ENJ_LKWRK", "ENJFLAG", "EPAR_SCRNR", "EPAR1TYP",
+   "EPAR2TYP", "ERELRPE", "ETANF_BMONTH", "ETANF_COVTYP", "ETANF_EMONTH",
+   "ETANF_OWN", "ETANF_PTCS", "EWELAC_MNYN", "EWELACTV1", "EWELACTV2_1",
+   "EWELACTV2_2", "EWELACTV2_3", "EWELACTV4", "EXMAR", "RCB_UNION", "RCHTYP1",
+   "RCHTYP2", "RCHTYP3", "RCHTYP4","RCHTYP5", "RCHTYP6", "RCHTYP7","RCHTYP8",
+   "RCHTYP9", "RCHTYP10", "RCHTYP11", "RCHTYP12", "RSNAP_YRYN", "RTANF_CFLG",
+   "RTANF_LCYR", "RTANF_MNYN", "RTANF_YRYN", "RWIC_YRYN", "TAGE", "TAGE_FB",
+   "TCEB", "TFCYINCPOV", "TFINCPOV", "THINCPOV", "TNUM_CBU", "TNUMKIDS",
+   "TPTRNINC", "TTANF_AMT", "TTANF_BRSN", "TTANF_ERSN", "TYEAR_FB"
+  ))
+  names(sipp) <- toupper(names(sipp))
+  return(sipp)
+}
+
+# load survey data for each year
+sipp2022 <- load_sipp("data/sipp/pu2022.csv") |>
+  mutate(year = 2022)
+sipp2021 <- load_sipp("data/sipp/pu2021.csv") |>
+  mutate(year = 2021)
+sipp2020 <- load_sipp("data/sipp/pu2020.csv") |>
+  mutate(year = 2020)
+sipp2019 <- load_sipp("data/sipp/pu2019.csv") |>
+  mutate(year = 2019)
+sipp2018 <- load_sipp("data/sipp/pu2018.csv") |>
+  mutate(year = 2018)
+
+
+# combine data frames
+sipp <- rbind.data.frame(sipp2022, sipp2021, sipp2020, sipp2019, sipp2018) |>
+  clean_names()
+
+write.csv(sipp, "sipp.csv")
+```
+
