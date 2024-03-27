@@ -55,8 +55,8 @@ expenditures_bar <- expenditures |>
       category %in% c("other", "other_assistance_emergency",
                       "non_assistance_emergency", "eitc_refundable",
                       "short_term_benefits", "non_eitc_refundable") ~
-        "Other"
-      #category == "unobligated_balance" ~ "Unobligated"
+        "Other",
+      category == "unobligated_balance" ~ "Unobligated"
   )) |>
   # remove unnecessary values
   filter(!is.na(category))
@@ -66,7 +66,7 @@ expenditures_bar |>
   mutate(category = fct_relevel(category, "Other", after = 0)) |>
   ggplot(aes(y = fct_rev(state))) +
   geom_col(aes(x = average_amount, fill = category), position = "fill") +
-  scale_fill_viridis_d(option = "magma") +
+  scale_fill_brewer(palette = "Pastel1")+
   theme_minimal() +
   labs(y = NULL, x = "Average Amount of Funding Per Year",
        title = "Average TANF Funds Spent by Category Per Year",
