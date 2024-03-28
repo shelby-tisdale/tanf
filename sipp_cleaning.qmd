@@ -1,4 +1,8 @@
 ```{r}
+#| label: load-packages
+#| message: false
+#| warning: false
+
 # load packages
 library(tidyverse)
 library(data.table)
@@ -30,7 +34,7 @@ load_sipp <- function(directory) {
    "RCHTYP9", "RCHTYP10", "RCHTYP11", "RCHTYP12", "RSNAP_YRYN", "RTANF_CFLG",
    "RTANF_LCYR", "RTANF_MNYN", "RTANF_YRYN", "RWIC_YRYN", "TAGE", "TAGE_FB",
    "TCEB", "TFCYINCPOV", "TFINCPOV", "THINCPOV", "TNUM_CBU", "TNUMKIDS",
-   "TPTRNINC", "TTANF_AMT", "TTANF_BRSN", "TTANF_ERSN", "TYEAR_FB"
+   "TPTRNINC", "TTANF_AMT", "TTANF_BRSN", "TTANF_ERSN", "TYEAR_FB", "ERP"
   ))
   names(sipp) <- toupper(names(sipp))
   return(sipp)
@@ -52,7 +56,7 @@ sipp <- rbind.data.frame(sipp2022, sipp2021, sipp2020, sipp2019, sipp2018) |>
   clean_names()
 
 # download csv
-#write.csv(sipp, "sipp.csv")
+write.csv(sipp, "sipp.csv")
 ```
 
 ```{r}
@@ -77,6 +81,7 @@ sipp <- sipp |>
     age = tage,
     parent1_num = epnpar1,
     parent2_num = epnpar2,
+    reference_par = erp,
     spouse_num = epnspouse,
     unmarried_partner_num = epncohab,
     num_children = tceb,
@@ -140,7 +145,33 @@ sipp <- sipp |>
 ```
 
 ```{r}
-#| label: aggregate-households
-  
+#| label: select-participant-households
+
+# find all households with
+parent_households <- sipp |>
+  # group by household and year
+  group_by(sample_unit_id, year) |>
+  summarize(
+    # reference parent is in household
+    ref_par = sum(reference_par == 1 & age >= 15, na.rm = TRUE)/12,
+    # parent in household has children who live with other parent
+    hh_other_kids = sum(other_kids & age >= 15 & month == 12, na.rm = TRUE),
+    # parent in household has children who live elsewhere
+    hh_kids_elsewhere = sum(num_children_elsewhere & age >= 15 & month == 12,
+                            na.rm = TRUE),
+    .groups = "drop"
+    ) |>
+  # indicator for whether parent in household
+  mutate(hh_has_parent = if_else(ref_par > 0 | hh_other_kids > 0 | hh_kids_elsewhere > 0, 1, 0)) |>
+  # select households with parents
+  filter(hh_has_parent == 1) |>
+  select(sample_unit_id) |>
+  distinct()
+
+# filter dataset for households with parents
+sipp <- sipp |>
+  filter(sample_unit_id %in% parent_households$sample_unit_id)
 ```
+
+
 
