@@ -41,12 +41,12 @@ expenditures_bar <- expenditures |>
   # assign categories
   mutate(
     category = case_when(
-      category %in% c("basic_assistance_no_subsidies") ~
+      category %in% c("basic_assistance_no_subsidies", "basic_assistance_subsidies", "other_assistance_foster", "other_assistance_juvenile_justice") ~
         "Direct Cash Assistance",
-      category %in% c("basic_assistance_subsidies", "other_assistance_foster",
+      category %in% c(
                       "non_assistance_welfare_foster", "child_welfare") ~
         "Child Welfare, Adoption, and Foster Care",
-      category %in% c("other_assistance_juvenile_justice",
+      category %in% c(
                       "non_assistance_juvenile_justice",
                       "children_youth_services") ~
         "Juvenile Justice and Youth Services",
@@ -62,17 +62,19 @@ expenditures_bar <- expenditures |>
       category %in% c("other", "other_assistance_emergency",
                       "non_assistance_emergency", "eitc_refundable",
                       "short_term_benefits", "non_eitc_refundable") ~
-        "Other"
-      #category == "unobligated_balance" ~ "Unobligated"
+        "Other",
+      category == "unobligated_balance" ~ "Unobligated"
   )) |>
   # remove unnecessary values
   filter(!is.na(category))
 
 expenditures_bar |>
   # order categories by mean average amount
-  mutate(category = fct_reorder(category, average_amount, .fun = mean)) |>
+  #mutate(category = fct_reorder(category, average_amount, .fun = mean)) |>
   # move Other category to end
   mutate(category = fct_relevel(category, "Other", after = 0)) |>
+  mutate(category = fct_relevel(category, "Direct Cash Assistance", after = Inf)) |>
+  mutate(category = fct_relevel(category, "Unobligated", after = Inf)) |>
   # reverse order of states
   mutate(state = fct_rev(state)) |>
   # move US to top of plot
@@ -81,9 +83,10 @@ expenditures_bar |>
   ggplot(aes(y = state)) +
   geom_col(aes(x = average_amount, fill = category), position = "fill",
            width = .75) +
+  geom_vline(xintercept = c(.25, .5, .75), color = "white", linetype = "dotted", linewidth = 1) + 
   # set color scale
   scale_fill_manual(values = c(lighten("#6980ce", 0.5),lighten("#64ac48", 0.5),lighten("#b460bd", 0.5),lighten("#9a963f", 0.5),lighten("#c75980", 0.5), lighten("#4aac8d", 0.5), lighten("#c98443", 0.5), "#cb4f42", "black")) +
-  #scale_fill_brewer(palette = "Pastel1") +
+  #scale_fill_brewer(palette = "Dark2", direction = -1) +
   # remove extra space on plot, change labels to percents
   scale_x_continuous(expand = c(0,0), labels = percent) +
   theme_minimal() +
@@ -106,6 +109,19 @@ expenditures_bar |>
                              override.aes = list(size = 4)))
 
 ```
+
+Observations:
+
+-   Mississippi filed most of the misappropriated funds under "TANF Work Program". Mississippi has unusually high expenditures in the "Work, Education, and Training Activities" category, implying that the effect of the welfare scandal on the amount of money actually going to services may have been quite large.
+
+-   Tennessee has a drastically high amount of unobligated funds. This article gives some insight: <https://tennesseelookout.com/2024/01/22/years-after-public-outcry-over-unspent-funds-for-needy-families-tennessee-has-717m-stockpile/>. Similarly for Hawaii, <https://www.tfhawaii.org/wordpress/blog/2023/04/tanf-hoarding-continued/>. While some political organizations and policy research organizations have taken note of the unobligated funds, I have found no research showing the actually impacts of unobligated funds on outcomes for children and families.
+
+-   It's interesting to me that intuitively, unobligated funds would be a bad thing for children and families, and research has shown that percent direct cash assistance definitely has a large impact on child well-being, but there is little relationship between the two (percent cash assistance and percent unobligated)
+
+-   I'm curious why program management funds vary so largely between states. It would make sense for larger states, states with more money to spend would spend more money on program management because there is more to manage, however, this is not necessarily the case.
+
+-   After looking at this, it might be interesting to create a heatmap showing the relationships between these variables; this could be helpful toward understanding what makes the difference in the amount of funds in a state that go toward their intended purposes.
+
 ```{r}
 #| label: segmented-bar-avg-unobligated
 #| fig-height: 14
@@ -114,7 +130,7 @@ expenditures_bar |>
 # wrangle data for bar plot
 expenditures_bar2 <- expenditures |>
   group_by(state) |>
-  summarize(mean_unobligated = mean(unobligated_balance/(funds_awarded + carryover))) |>
+  summarize(mean_unobligated = mean(unobligated_balance/(funds_awarded + carryover +fed_unliquidated))) |>
   ungroup() |>
   mutate(state = fct_rev(state))
 
@@ -171,5 +187,44 @@ ggplot(us_hexbin) +
   labs(fill = "Mean Percent Unobligated Funds",
        title = "Average Percent Unobligated TANF Funds by State")
 
+
+```
+
+```{r}
+
+expenditures_bar3 <- expenditures |>
+  group_by(state) |>
+  summarize(mean_direct_assistance = mean(basic_assistance / total_expenditures)) |>
+  ungroup() |>
+  mutate(state = fct_rev(state))
+
+us_hexbin2 <- st_read("data/us_states_hexgrid.geojson") |>
+  mutate(google_name = toupper(str_remove(google_name, " \\(United States\\)"))) |>
+  mutate(google_name = if_else(google_name == "DISTRICT OF COLUMBIA", "DIST.OF COLUMBIA", google_name)) |>
+  left_join(expenditures_bar3, join_by(google_name == state))
+
+
+ggplot(us_hexbin2) +
+  geom_sf(aes(fill = mean_direct_assistance), color = "white", linewidth = 1) +
+  geom_sf_text(aes(label = iso3166_2), color = "black", family = "Lexend") +
+  theme_void() +
+  scale_fill_distiller(direction = 1) +
+  theme(text = element_text(family = "Lexend"),
+        legend.position = "top",
+        plot.title = element_text(size = 16, face = "bold",  hjust = 0.5)) +
+  labs(fill = "Mean Percent Direct Assistance",
+       title = "Percent TANF Funds Spent on Direct Assistance by State")
+
+```
+
+```{r}
+# wrangle data for bar plot
+expenditures_bar4 <- expenditures |>
+  mutate(services = other_assistance + non_assistance + work_ed + early_ed +
+           financial_ed + eitc_refundable + non_eitc_refundable +
+           short_term_benefits + support__services + children_youth_services +
+           pregnancy_prevention + fatherhood_programs + child_welfare +
+           home_visiting + program_mgmt + other) |>
+  select(state, funds_awarded, ccdf_discretionary, ssbg_block_grant, adjusted_award, carryover, basic_assistance, services, total_expenditures, fed_unliquidated, unobligated_balance)
 
 ```
