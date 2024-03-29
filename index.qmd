@@ -75,6 +75,9 @@ expenditures_bar |>
   mutate(category = fct_relevel(category, "Other", after = 0)) |>
   mutate(category = fct_relevel(category, "Direct Cash Assistance", after = Inf)) |>
   mutate(category = fct_relevel(category, "Unobligated", after = Inf)) |>
+  ggplot(aes(y = fct_rev(state))) +
+  geom_col(aes(x = average_amount, fill = category), position = "fill") +
+  scale_fill_brewer(palette = "Pastel1") +
   # reverse order of states
   mutate(state = fct_rev(state)) |>
   # move US to top of plot

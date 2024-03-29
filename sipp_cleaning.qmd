@@ -1,0 +1,177 @@
+```{r}
+#| label: load-packages
+#| message: false
+#| warning: false
+
+# load packages
+library(tidyverse)
+library(data.table)
+library(bit64)
+library(janitor)
+```
+
+```{r}
+# create function for loading data
+load_sipp <- function(directory) {
+  ds <- c(directory)
+  sipp <- fread(ds, sep = "|", select = c(
+    # ID VARS
+   "SHHADID", "SPANEL", "SSUID", "SWAVE", "PNUM", "MONTHCODE", "GHLFSAM",
+   "EHRESIDENCID", "EINTTYPE", "ERESIDENCEID","RIN_UNIV",
+   "THHLDSTATUS", "TST_INTV", "EPNPAR1", "EPNPAR2", "EPNCOHAB", "EPNSPOUSE",
+   "RPNCHILD1", "RPNCHILD2", "RPNCHILD3", "RPNCHILD4", "RPNCHILD5", "RPNCHILD6",
+   "RPNCHILD7", "RPNCHILD8", "RPNCHILD9", "RPNCHILD10", "RPNCHILD11",
+   "RPNCHILD12",
+    # WEIGHTS AND SAMPLING
+   "GVARSTR", "WPFINWGT",
+   # OTHER
+   "EANYKID", "EBDAD", "EBMOM", "ECLTH_SR1YN", "EJB1_BSLRYB", "EJB1_SCRNR",
+   "EMPF", "EMS_EHC", "ENJ_LKWRK", "ENJFLAG", "EPAR_SCRNR", "EPAR1TYP",
+   "EPAR2TYP", "ERELRPE", "ETANF_BMONTH", "ETANF_COVTYP", "ETANF_EMONTH",
+   "ETANF_OWN", "ETANF_PTCS", "EWELAC_MNYN", "EWELACTV1", "EWELACTV2_1",
+   "EWELACTV2_2", "EWELACTV2_3", "EWELACTV4", "EXMAR", "RCB_UNION", "RCHTYP1",
+   "RCHTYP2", "RCHTYP3", "RCHTYP4","RCHTYP5", "RCHTYP6", "RCHTYP7","RCHTYP8",
+   "RCHTYP9", "RCHTYP10", "RCHTYP11", "RCHTYP12", "RSNAP_YRYN", "RTANF_CFLG",
+   "RTANF_LCYR", "RTANF_MNYN", "RTANF_YRYN", "RWIC_YRYN", "TAGE", "TAGE_FB",
+   "TCEB", "TFCYINCPOV", "TFINCPOV", "THINCPOV", "TNUM_CBU", "TNUMKIDS",
+   "TPTRNINC", "TTANF_AMT", "TTANF_BRSN", "TTANF_ERSN", "TYEAR_FB", "ERP"
+  ))
+  names(sipp) <- toupper(names(sipp))
+  return(sipp)
+}
+# load survey data for each year
+sipp2022 <- load_sipp("data/sipp/pu2022.csv") |>
+  mutate(year = 2022)
+sipp2021 <- load_sipp("data/sipp/pu2021.csv") |>
+  mutate(year = 2021)
+sipp2020 <- load_sipp("data/sipp/pu2020.csv") |>
+  mutate(year = 2020)
+sipp2019 <- load_sipp("data/sipp/pu2019.csv") |>
+  mutate(year = 2019)
+sipp2018 <- load_sipp("data/sipp/pu2018.csv") |>
+  mutate(year = 2018)
+
+# combine data frames
+sipp <- rbind.data.frame(sipp2022, sipp2021, sipp2020, sipp2019, sipp2018) |>
+  clean_names()
+
+# download csv
+write.csv(sipp, "sipp.csv")
+```
+
+```{r}
+#| label: rename-columns
+
+sipp <- sipp |>
+  rename(
+    hh_address_id = shhadid,
+    panel_year = spanel,
+    sample_unit_id = ssuid,
+    wave_num = swave,
+    person_num = pnum,
+    month = monthcode,
+    half_sample_code = ghlfsam,
+    var_strat_code = gvarstr,
+    person_weight = wpfinwgt,
+    interview_address_id = ehresidencid,
+    residence_address_id = eresidenceid,
+    in_universe = rin_univ,
+    hh_status = thhldstatus,
+    state = tst_intv,
+    age = tage,
+    parent1_num = epnpar1,
+    parent2_num = epnpar2,
+    reference_par = erp,
+    spouse_num = epnspouse,
+    unmarried_partner_num = epncohab,
+    num_children = tceb,
+    num_children_elsewhere = tnumkids,
+    child1_num = rpnchild1,
+    child2_num = rpnchild2,
+    child3_num = rpnchild3,
+    child4_num = rpnchild4,
+    child5_num = rpnchild5,
+    child6_num = rpnchild6,
+    child7_num = rpnchild7,
+    child8_num = rpnchild8,
+    child9_num = rpnchild9,
+    child10_num = rpnchild10,
+    child11_num = rpnchild11,
+    child12_num = rpnchild12,
+    other_kids = eanykid,
+    age_first_birth = tage_fb,
+    year_first_birth = tyear_fb,
+    father_mortality = ebdad,
+    mother_mortality = ebmom,
+    govt_assistance = eclth_sr1yn,
+    reg_salary = ejb1_bslryb,
+    has_job = ejb1_scrnr,
+    children_mult_partners = empf,
+    marital_status = ems_ehc,
+    look_for_work = enj_lkwrk,
+    no_job_spell = enjflag,
+    is_parent = epar_scrnr,
+    parent1_type = epar1typ,
+    parent2_type = epar2typ,
+    hh_relationship = erelrpe,
+    tanf_begin_month = etanf_bmonth,
+    tanf_begin_year = rtanf_lcyr,
+    tanf_end_month = etanf_emonth,
+    tanf_coverage_type = etanf_covtyp,
+    tanf_owner = etanf_own,
+    tanf_child_support = etanf_ptcs,
+    tanf_continue = rtanf_cflg,
+    tanf_received_month = rtanf_mnyn,
+    tanf_received_year = rtanf_yryn,
+    tanf_amt_month = ttanf_amt,
+    tanf_begin_reason = ttanf_brsn,
+    tanf_end_reason = ttanf_ersn,
+    wic_received_year = rwic_yryn,
+    job_training_month = ewelac_mnyn,
+    reading_math_class = ewelactv1,
+    job_readiness_training = ewelactv2_1,
+    job_search_program = ewelactv2_2,
+    job_skill_training = ewelactv2_3,
+    work_for_tanf = ewelactv4,
+    times_married = exmar,
+    childbearing_union = rcb_union,
+    num_childbearing_union = tnum_cbu,
+    received_snap = rsnap_yryn,
+    year_family_inc_pov_ = tfcyincpov,
+    month_family_inc_pov = tfincpov,
+    month_hh_inc_pov = thincpov,
+    govt_income_monthly = tptrninc
+    )
+```
+
+```{r}
+#| label: select-participant-households
+
+# find all households with
+parent_households <- sipp |>
+  # group by household and year
+  group_by(sample_unit_id, year) |>
+  summarize(
+    # reference parent is in household
+    ref_par = sum(reference_par == 1 & age >= 15, na.rm = TRUE)/12,
+    # parent in household has children who live with other parent
+    hh_other_kids = sum(other_kids & age >= 15 & month == 12, na.rm = TRUE),
+    # parent in household has children who live elsewhere
+    hh_kids_elsewhere = sum(num_children_elsewhere & age >= 15 & month == 12,
+                            na.rm = TRUE),
+    .groups = "drop"
+    ) |>
+  # indicator for whether parent in household
+  mutate(hh_has_parent = if_else(ref_par > 0 | hh_other_kids > 0 | hh_kids_elsewhere > 0, 1, 0)) |>
+  # select households with parents
+  filter(hh_has_parent == 1) |>
+  select(sample_unit_id) |>
+  distinct()
+
+# filter dataset for households with parents
+sipp <- sipp |>
+  filter(sample_unit_id %in% parent_households$sample_unit_id)
+```
+
+
+
