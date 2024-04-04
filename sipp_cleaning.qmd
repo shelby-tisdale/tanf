@@ -159,13 +159,14 @@ households_with_children <- sipp |>
   # household_address id differentiates parent from spawned households
   # residence address id is current residence for each month
   # what should be used as unique identifier for address?
-  group_by(sample_unit_id, interview_address_id, hh_address_id, residence_address_id, year, month) |>
+  group_by(sample_unit_id, interview_address_id, hh_address_id, residence_address_id, year, month, state) |>
   # count number of children in each household
   summarize(hh_children_count = sum(age <= 18, na.rm = TRUE), .groups = "drop") |>
   # remove households without children
   filter(hh_children_count != 0) |>
   # select distinct households
-  select(sample_unit_id, interview_address_id, hh_address_id, year, month) |>
+  select(sample_unit_id, interview_address_id, hh_address_id, year, month, state) |>
+  filter(!is.na(state)) |>
   distinct()
 
 # determine quantiles of monthly household income-to-poverty ratio
@@ -174,9 +175,9 @@ inc_pov_quantiles <- quantile(sipp$month_hh_inc_pov, na.rm = TRUE)
 
 # select low-income households
 household_poverty <- sipp |>
-  group_by(sample_unit_id, interview_address_id, residence_address_id, hh_address_id, year, month) |>
+  group_by(sample_unit_id, interview_address_id, residence_address_id, hh_address_id, year, month, state) |>
   summarise(low_income = if_else(month_hh_inc_pov <= inc_pov_quantiles[3], 1, 0)) |>
-  filter(low_income == 1) |>
+  filter(low_income == 1 & !is.na(state)) |>
   distinct()
 
 # create dataset with only households with children
@@ -193,7 +194,36 @@ sipp_participants <- sipp |>
 ```{r}
 #| label: data-for-tanf-goal-one
 
-# data for household
+# reference parents and children
+children <- sipp_participants |>
+  mutate(is_child = if_else(age <= 18, 1, 0)) |>
+  filter(is_child == 1) |>
+  select(
+    year, month, state, sample_unit_id, interview_address_id, residence_address_id,
+    hh_address_id, person_num, age, hh_relationship, parent1_num, parent2_num, is_parent) |>
+  mutate(goal1 = case_when(
+    hh_relationship == 1 ~ 1,
+    hh_relationship == 2 ~ 0,
+    hh_relationship == 15 ~ 0,
+    hh_relationship == 8 ~ 1,
+    hh_relationship == 10 ~ 1,
+    hh_relationship == 14 ~ 1,
+    hh_relationship == 18 ~ 0,
+    !is.na(parent1_num) | !is.na(parent2_num) ~ 1
+    
+  ))
+
+# if child is householder with relatives, goal1 = 1
+# if child is householder without relatives, goal1 = 0
+# if child has at least 1 parent, goal1 = 1
+# if child is foster child, goal1 = 0
+# if child does not have parents in household & is not related to householder, goal1 = 0
+# if child does not have parents in household but is related to householder, goal1 = 1
+
+
+parent_child_lookup <- sipp_participants |>
+  filter(reference_par == 1) |>
+  select()
 
 ```
 
