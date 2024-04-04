@@ -146,61 +146,55 @@ sipp <- sipp |>
 sipp$hh_relationship
 
 # load new data
-sipp <- read.csv("sipp.csv")
-```
-
-```{r}
-#| label: select-participant-households
-
-sipp |>
-  filter(year == 2022) |>
-  select(sample_unit_id) |>
-  distinct()
-
-# find all households with
-parent_households <- sipp |>
-  # group by household and year
-  group_by(sample_unit_id, year) |>
-  summarize(
-    # reference parent is in household
-    # each child has a reference parent
-    # so this indicates whether or not a child is in the household
-    ref_par = sum(reference_par == 1 & age >= 15, na.rm = TRUE)/12,
-    .groups = "drop"
-    ) |>
-  # indicator for whether parent in household
-  mutate(hh_has_parent = if_else(ref_par > 0, 1, 0)) |>
-  # select households with parents
-  filter(hh_has_parent == 1) |>
-  select(sample_unit_id) |>
-  distinct()
-
-# filter dataset for households with parents
-sipp_parents <- sipp |>
-  filter(sample_unit_id %in% parent_households$sample_unit_id)
-
-
-
+sipp <- read.csv("data/sipp.csv")
 ```
 
 ```{r}
 #| label: all-participants
 
+# find households that have at least one child in any month
 households_with_children <- sipp |>
-  group_by(sample_unit_id) |>
-  summarize(hh_children_count = sum(age <= 18), .groups = "drop") |>
+  # sample unit id is originally sampled household
+  # interview address id is residence where interview is conducted
+  # household_address id differentiates parent from spawned households
+  # residence address id is current residence for each month
+  # what should be used as unique identifier for address?
+  group_by(sample_unit_id, interview_address_id, hh_address_id, residence_address_id, year, month) |>
+  # count number of children in each household
+  summarize(hh_children_count = sum(age <= 18, na.rm = TRUE), .groups = "drop") |>
+  # remove households without children
   filter(hh_children_count != 0) |>
-  select(sample_unit_id) |>
+  # select distinct households
+  select(sample_unit_id, interview_address_id, hh_address_id, year, month) |>
   distinct()
 
+# determine quantiles of monthly household income-to-poverty ratio
+# what income cutoff should I use?
+inc_pov_quantiles <- quantile(sipp$month_hh_inc_pov, na.rm = TRUE)
+
+# select low-income households
+household_poverty <- sipp |>
+  group_by(sample_unit_id, interview_address_id, residence_address_id, hh_address_id, year, month) |>
+  summarise(low_income = if_else(month_hh_inc_pov <= inc_pov_quantiles[3], 1, 0)) |>
+  filter(low_income == 1) |>
+  distinct()
+
+# create dataset with only households with children
+# that at some point are low-income
+# difference between amount of records in this dataset and records in initial
+# dataset is quite small
 sipp_participants <- sipp |>
-  filter(sample_unit_id %in% households_with_children$sample_unit_id)
-
-sipp |>
-  filter(year == 2022) |>
-  select(sample_unit_id) |>
-  distinct()
+  filter(sample_unit_id %in% households_with_children$sample_unit_id &
+         interview_address_id %in% households_with_children$interview_address_id &
+         hh_address_id %in% households_with_children$hh_address_id &
+         sample_unit_id %in% household_poverty$sample_unit_id)
 ```
 
+```{r}
+#| label: data-for-tanf-goal-one
+
+# data for household
+
+```
 
 
