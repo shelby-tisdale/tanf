@@ -34,7 +34,19 @@ load_sipp <- function(directory) {
    "RCHTYP9", "RCHTYP10", "RCHTYP11", "RCHTYP12", "RSNAP_YRYN", "RTANF_CFLG",
    "RTANF_LCYR", "RTANF_MNYN", "RTANF_YRYN", "RWIC_YRYN", "TAGE", "TAGE_FB",
    "TCEB", "TFCYINCPOV", "TFINCPOV", "THINCPOV", "TNUM_CBU", "TNUMKIDS",
-   "TPTRNINC", "TTANF_AMT", "TTANF_BRSN", "TTANF_ERSN", "TYEAR_FB", "ERP"
+   "TPTRNINC", "TTANF_AMT", "TTANF_BRSN", "TTANF_ERSN", "TYEAR_FB", "ERP",
+   # RELATIONSHIP DATA
+   "RREL1", "RREL2", "RREL3", "RREL4", "RREL5", "RREL6", "RREL7", "RREL8",
+   "RREL9", "RREL10", "RREL11", "RREL12", "RREL13", "RREL14", "RREL15",
+   "RREL16", "RREL17", "RREL18", "RREL19", "RREL20", "RREL21", "RREL22",
+   "RREL23", "RREL24", "RREL25", "RREL26", "RREL27", "RREL28", "RREL29",
+   "RREL30", "RREL_PNUM1", "RREL_PNUM2", "RREL_PNUM3", "RREL_PNUM4",
+   "RREL_PNUM5", "RREL_PNUM6", "RREL_PNUM7", "RREL_PNUM8", "RREL_PNUM9",
+   "RREL_PNUM10", "RREL_PNUM11", "RREL_PNUM12", "RREL_PNUM13", "RREL_PNUM14",
+   "RREL_PNUM15", "RREL_PNUM16", "RREL_PNUM17", "RREL_PNUM18", "RREL_PNUM19",
+   "RREL_PNUM20", "RREL_PNUM21", "RREL_PNUM22", "RREL_PNUM23", "RREL_PNUM24",
+   "RREL_PNUM25", "RREL_PNUM26", "RREL_PNUM27", "RREL_PNUM28", "RREL_PNUM29",
+   "RREL_PNUM30"
   ))
   names(sipp) <- toupper(names(sipp))
   return(sipp)
@@ -56,7 +68,7 @@ sipp <- rbind.data.frame(sipp2022, sipp2021, sipp2020, sipp2019, sipp2018) |>
   clean_names()
 
 # download csv
-write.csv(sipp, "sipp.csv")
+#write.csv(sipp, "sipp.csv")
 ```
 
 ```{r}
@@ -143,10 +155,8 @@ sipp <- sipp |>
     govt_income_monthly = tptrninc
     )
 
-sipp$hh_relationship
-
 # load new data
-sipp <- read.csv("data/sipp.csv")
+#sipp <- read.csv("data/sipp.csv")
 ```
 
 ```{r}
@@ -196,7 +206,7 @@ sipp_participants <- sipp |>
 
 # reference parents and children
 children <- sipp_participants |>
-  mutate(is_child = if_else(age <= 18, 1, 0)) |>
+  mutate(is_child = if_else(age < 18, 1, 0)) |>
   filter(is_child == 1) |>
   select(
     year, month, state, sample_unit_id, interview_address_id, residence_address_id,
@@ -207,11 +217,15 @@ children <- sipp_participants |>
     hh_relationship == 15 ~ 0,
     hh_relationship == 8 ~ 1,
     hh_relationship == 10 ~ 1,
+    hh_relationship == 13 ~ 1,
     hh_relationship == 14 ~ 1,
+    hh_relationship == 4 ~ 0,
     hh_relationship == 18 ~ 0,
     !is.na(parent1_num) | !is.na(parent2_num) ~ 1
-    
   ))
+
+children <- children |>
+  filter(is.na(goal1))
 
 # if child is householder with relatives, goal1 = 1
 # if child is householder without relatives, goal1 = 0
@@ -223,7 +237,13 @@ children <- sipp_participants |>
 
 parent_child_lookup <- sipp_participants |>
   filter(reference_par == 1) |>
-  select()
+  select(person_num, sample_unit_id, starts_with("child")) |>
+  select(-c(children_mult_partners, childbearing_union)) |>
+  rename(parent_person_num = person_num) |>
+  pivot_longer(cols = starts_with("child"),
+               names_to = "child",
+               values_to = "child_person_number") |>
+  filter(!is.na(child_person_number))
 
 ```
 
