@@ -142,10 +142,20 @@ sipp <- sipp |>
     month_hh_inc_pov = thincpov,
     govt_income_monthly = tptrninc
     )
+
+sipp$hh_relationship
+
+# load new data
+sipp <- read.csv("sipp.csv")
 ```
 
 ```{r}
 #| label: select-participant-households
+
+sipp |>
+  filter(year == 2022) |>
+  select(sample_unit_id) |>
+  distinct()
 
 # find all households with
 parent_households <- sipp |>
@@ -153,24 +163,43 @@ parent_households <- sipp |>
   group_by(sample_unit_id, year) |>
   summarize(
     # reference parent is in household
+    # each child has a reference parent
+    # so this indicates whether or not a child is in the household
     ref_par = sum(reference_par == 1 & age >= 15, na.rm = TRUE)/12,
-    # parent in household has children who live with other parent
-    hh_other_kids = sum(other_kids & age >= 15 & month == 12, na.rm = TRUE),
-    # parent in household has children who live elsewhere
-    hh_kids_elsewhere = sum(num_children_elsewhere & age >= 15 & month == 12,
-                            na.rm = TRUE),
     .groups = "drop"
     ) |>
   # indicator for whether parent in household
-  mutate(hh_has_parent = if_else(ref_par > 0 | hh_other_kids > 0 | hh_kids_elsewhere > 0, 1, 0)) |>
+  mutate(hh_has_parent = if_else(ref_par > 0, 1, 0)) |>
   # select households with parents
   filter(hh_has_parent == 1) |>
   select(sample_unit_id) |>
   distinct()
 
 # filter dataset for households with parents
-sipp <- sipp |>
+sipp_parents <- sipp |>
   filter(sample_unit_id %in% parent_households$sample_unit_id)
+
+
+
+```
+
+```{r}
+#| label: all-participants
+
+households_with_children <- sipp |>
+  group_by(sample_unit_id) |>
+  summarize(hh_children_count = sum(age <= 18), .groups = "drop") |>
+  filter(hh_children_count != 0) |>
+  select(sample_unit_id) |>
+  distinct()
+
+sipp_participants <- sipp |>
+  filter(sample_unit_id %in% households_with_children$sample_unit_id)
+
+sipp |>
+  filter(year == 2022) |>
+  select(sample_unit_id) |>
+  distinct()
 ```
 
 
