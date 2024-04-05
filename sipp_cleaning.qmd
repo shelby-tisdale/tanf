@@ -8,7 +8,29 @@ library(tidyverse)
 library(data.table)
 library(bit64)
 library(janitor)
+
 ```
+
+```{r}
+#| label: load-tanf-data
+
+# load federal tanf data
+tanf <- read_csv("data/total_expenditures_2015_2022.csv")
+
+# create dataset of state-year-level tanf data
+tanf_state_year <- tanf |>
+  # filter for relevant years
+  filter(fiscal_year %in% c(2018:2022)) |>
+  # create variables for percent unobligated funds, percent spent on basic
+  # assistance, and percent spent on program management
+  mutate(pct_unobligated = unobligated_balance/(funds_awarded + carryover),
+         pct_basic_assistance = basic_assistance/total_expenditures,
+         pct_program_mgmt = program_mgmt/total_expenditures) |>
+  # select relevant variables
+  select(state, fiscal_year, pct_unobligated, pct_program_mgmt, pct_basic_assistance)
+
+```
+
 
 ```{r}
 # create function for loading data
@@ -156,12 +178,71 @@ sipp <- sipp |>
     govt_income_monthly = tptrninc
     )
 
+sipp <- sipp |>
+  mutate(state = case_match(
+    state,
+    1 ~ "ALABAMA",
+    2 ~ "ALASKA", 
+    4 ~ "ARIZONA",
+    5 ~ "ARKANSAS",
+    6 ~ "CALIFORNIA",
+    8 ~ "COLORADO",
+    9 ~ "CONNECTICUT",
+    10 ~ "DELAWARE",
+    11 ~ "DIST.OF COLUMBIA",
+    12 ~ "FLORIDA",
+    13 ~ "GEORGIA",
+    15 ~ "HAWAII",
+    16 ~ "IDAHO",
+    17 ~ "ILLINOIS",
+    18 ~ "INDIANA",
+    19 ~ "IOWA",
+    20 ~ "KANSAS",
+    21 ~ "KENTUCKY",
+    22 ~ "LOUISIANA",
+    23 ~ "MAINE",
+    24 ~ "MARYLAND",
+    25 ~ "MASSACHUSETTS",
+    26 ~ "MICHIGAN",
+    27 ~ "MINNESOTA",
+    28 ~ "MISSISSIPPI",
+    29 ~ "MISSOURI",
+    30 ~ "MONTANA",
+    31 ~ "NEBRASKA",
+    32 ~ "NEVADA",
+    33 ~ "NEW HAMPSHIRE",
+    34 ~ "NEW JERSEY",
+    35 ~ "NEW MEXICO",
+    36 ~ "NEW YORK",
+    37 ~ "NORTH CAROLINA",
+    38 ~ "NORTH DAKOTA",
+    39 ~ "OHIO",
+    40 ~ "OKLAHOMA",
+    41 ~ "OREGON",
+    42 ~ "PENNSYLVANIA",
+    44 ~ "RHODE ISLAND",
+    45 ~ "SOUTH CAROLINA",
+    46 ~ "SOUTH DAKOTA",
+    47 ~ "TENNESSEE",
+    48 ~ "TEXAS",
+    49 ~ "UTAH",
+    50 ~ "VERMONT",
+    51 ~ "VIRGINIA",
+    53 ~ "WASHINGTON",
+    54 ~ "WEST VIRGINIA",
+    55 ~ "WISCONSIN",
+    56 ~ "WYOMING",
+    60 ~ "PUERTO RICO AND ISLAND AREAS",
+    61 ~ "FOREIGN COUNTRY"
+    ))
+
 # load new data
 #sipp <- read.csv("data/sipp.csv")
 ```
 
 ```{r}
 #| label: all-participants
+#| warning: false
 
 # find households that have at least one child in any month
 households_with_children <- sipp |>
@@ -170,7 +251,8 @@ households_with_children <- sipp |>
   # household_address id differentiates parent from spawned households
   # residence address id is current residence for each month
   # what should be used as unique identifier for address?
-  group_by(sample_unit_id, interview_address_id, hh_address_id, residence_address_id, year, month, state) |>
+  group_by(sample_unit_id, interview_address_id, hh_address_id,
+           residence_address_id, year, month, state) |>
   # count number of children in each household
   summarize(hh_children_count = sum(age <= 18, na.rm = TRUE), .groups = "drop") |>
   # remove households without children
@@ -186,7 +268,8 @@ inc_pov_quantiles <- quantile(sipp$month_hh_inc_pov, na.rm = TRUE)
 
 # select low-income households
 household_poverty <- sipp |>
-  group_by(sample_unit_id, interview_address_id, residence_address_id, hh_address_id, year, month, state) |>
+  group_by(sample_unit_id, interview_address_id, residence_address_id,
+           hh_address_id, year, month, state) |>
   summarise(low_income = if_else(month_hh_inc_pov <= inc_pov_quantiles[3], 1, 0)) |>
   filter(low_income == 1 & !is.na(state)) |>
   distinct()
@@ -207,13 +290,19 @@ sipp_participants <- sipp |>
 
 # reference parents and children
 # household relationship approach
+# first looks at whether the child has parents in the household
+# then uses householder relationship variable to determine whether they live
+# with relatives
 children <- sipp_participants |>
+  # filters participants for children only
   mutate(is_child = if_else(age < 18, 1, 0)) |>
   filter(is_child == 1) |>
+  # select relevant variables
   select(
     year, month, state, sample_unit_id, interview_address_id, residence_address_id,
     hh_address_id, person_num, age, hh_relationship, parent1_num, parent2_num,
     rfpersons, is_parent) |>
+  # goal1 = 1 if goal fulfilled (by child and month), goal1 = 0 if not
   mutate(goal1 = case_when(
     # child who has at least one parent in household
     !is.na(parent1_num) | !is.na(parent2_num) ~ 1,
@@ -239,73 +328,82 @@ children <- sipp_participants |>
     is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 18 ~ 0,
     # brother/sister-in-law
     is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 12 ~ 1
-  ))
+  )) |>
+  drop_na(goal1)
 
-children <- children |>
-  filter(is.na(goal1))
-# if child is householder with relatives, goal1 = 1
-# if child is householder without relatives, goal1 = 0
-# if child has at least 1 parent, goal1 = 1
-# if child is foster child, goal1 = 0
-# if child does not have parents in household & is not related to householder, goal1 = 0
-# if child does not have parents in household but is related to householder, goal1 = 1
+# there are three children where household relationship is parent/child-in-law??
+#children |>
+ # filter(is.na(goal1))
+
 
 # lookup table approach
+# create table of reference parents, all children, and their relationships
 parent_child_lookup <- sipp_participants |>
+  # filters for only people who identify as reference parents
   filter(reference_par == 1) |>
-  select(person_num, sample_unit_id, starts_with("child"), starts_with("rrel")) |>
+  # parent person number and sample unit id (id vars)
+  # child variables and relationship variables
+  select(person_num, sample_unit_id, month, year, starts_with("child"),
+         starts_with("rrel")) |>
   select(-c(children_mult_partners, childbearing_union)) |>
+  # each row is a unique parent-child combination for a month
   pivot_longer(cols = starts_with("child"),
                names_to = "child",
                values_to = "child_person_number") |>
   filter(!is.na(child_person_number)) |>
   distinct() |>
+  # each row is a parent-child combination for a month, repeated for
+  # person numbers of all other members of the household
   pivot_longer(cols = starts_with("rrel_pnum"),
                names_to = "hh_member_number",
                values_to = "person_num_rel") |>
   filter(!is.na(person_num_rel)) |>
   distinct() |>
+  # each row is a parent-child combination for a month, repeated for the
+  # person number and relationship to all other members of household
   pivot_longer(cols = starts_with("rrel"),
                names_to = "hh_member_number2",
                values_to = "relationship") |>
   filter(!is.na(relationship)) |>
   distinct() |>
+  # remove relationships for individuals who are not the child of the reference
+  # parent
   filter(person_num_rel == child_person_number) |>
   distinct() |>
-  mutate(hh_member_number = extract_numeric(hh_member_number),
-         hh_member_number2 = extract_numeric(hh_member_number2)) |>
+  # match household member numbers for relationship and person number variables
+  mutate(hh_member_number = parse_number(hh_member_number),
+         hh_member_number2 = parse_number(hh_member_number2)) |>
   filter(hh_member_number == hh_member_number2) |>
-  distinct()
+  distinct() |>
+  # select relevant variables for parent-child lookup
+  select(sample_unit_id, year, month, person_num, child_person_number,
+         relationship) |>
+  rename(ref_parent_person_num = person_num, child_person_num = child_person_number)
 
-parent_child_lookup <- parent_child_lookup |>
-  mutate(parent_number = person_num) |>
-  select(sample_unit_id, parent_number, child_person_number, relationship) |>
-  (distinct)()
+# match all children to reference parent
+# don't know if this is helpful
+children <- children |>
+  left_join(parent_child_lookup, by = join_by(
+    sample_unit_id, person_num == child_person_num, year, month))
 
-
-parent_child_lookup <- sipp_participants |>
-  filter(reference_par == 1) |>
-  select(person_num, sample_unit_id, starts_with("rrel")) |>
-  
-  rename(parent_person_num = person_num) |>
-  pivot_longer(cols = starts_with("rrel_pnum"),
-               names_to = "hh_member_number",
-               values_to = "person_num_rel") |>
-  filter(!is.na(person_num_rel))
-
-
-parent_child_lookup <- parent_child_lookup |>
-  pivot_longer(cols = starts_with("rrel"),
-               names_to = "hh_member_number2",
-               values_to = "relationship") 
-
-parent_child_lookup<- parent_child_lookup|>
-  filter(!is.na(relationship))
+# evaluates whether tanf goal 1 is achieved for a household in a given year and month
+hh_goal1 <- children |>
+  # group by year, mont, and household
+  group_by(year, month, state, sample_unit_id) |>
+  # determine average (over all children in household in that month)
+  # achievement of goal 1
+  summarise(avg_goal1 = mean(goal1, na.rm = TRUE), .groups = "drop") |>
+  # if goal1 = 0 for any child in household, goal1 is not achieved
+  mutate(hh_month_goal1 = if_else(avg_goal1 != 1, 0, 1))
 
 
-
-  filter(!is.na(child_person_number))
+# next steps
+# bring in household demographic data
+# bring in predictor variables
 
 ```
 
+```{r}
+#| label: join-goal1-to-tanf-data
+```
 
