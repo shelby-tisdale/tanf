@@ -35,6 +35,7 @@ load_sipp <- function(directory) {
    "RTANF_LCYR", "RTANF_MNYN", "RTANF_YRYN", "RWIC_YRYN", "TAGE", "TAGE_FB",
    "TCEB", "TFCYINCPOV", "TFINCPOV", "THINCPOV", "TNUM_CBU", "TNUMKIDS",
    "TPTRNINC", "TTANF_AMT", "TTANF_BRSN", "TTANF_ERSN", "TYEAR_FB", "ERP",
+   "RFAMNUM", "RFPERSONS",
    # RELATIONSHIP DATA
    "RREL1", "RREL2", "RREL3", "RREL4", "RREL5", "RREL6", "RREL7", "RREL8",
    "RREL9", "RREL10", "RREL11", "RREL12", "RREL13", "RREL14", "RREL15",
@@ -205,28 +206,43 @@ sipp_participants <- sipp |>
 #| label: data-for-tanf-goal-one
 
 # reference parents and children
+# household relationship approach
 children <- sipp_participants |>
   mutate(is_child = if_else(age < 18, 1, 0)) |>
   filter(is_child == 1) |>
   select(
     year, month, state, sample_unit_id, interview_address_id, residence_address_id,
-    hh_address_id, person_num, age, hh_relationship, parent1_num, parent2_num, is_parent) |>
+    hh_address_id, person_num, age, hh_relationship, parent1_num, parent2_num,
+    rfpersons, is_parent) |>
   mutate(goal1 = case_when(
-    hh_relationship == 1 ~ 1,
-    hh_relationship == 2 ~ 0,
-    hh_relationship == 15 ~ 0,
-    hh_relationship == 8 ~ 1,
-    hh_relationship == 10 ~ 1,
-    hh_relationship == 13 ~ 1,
-    hh_relationship == 14 ~ 1,
-    hh_relationship == 4 ~ 0,
-    hh_relationship == 18 ~ 0,
-    !is.na(parent1_num) | !is.na(parent2_num) ~ 1
+    # child who has at least one parent in household
+    !is.na(parent1_num) | !is.na(parent2_num) ~ 1,
+    # child who is only person in family
+    rfpersons == 1 ~ 0,
+    # householder with relatives
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 1 ~ 1,
+    # housholder no relatives
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 2 ~ 0,
+    # foster child
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 15 ~ 0,
+    # grandchild
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 8 ~ 1,
+    # sibling
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 10 ~ 1,
+    # niece / nephew
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 13 ~ 1,
+    # other relative
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 14 ~ 1,
+    # unmarried partner
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 4 ~ 0,
+    # other nonrelative
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 18 ~ 0,
+    # brother/sister-in-law
+    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 12 ~ 1
   ))
 
 children <- children |>
   filter(is.na(goal1))
-
 # if child is householder with relatives, goal1 = 1
 # if child is householder without relatives, goal1 = 0
 # if child has at least 1 parent, goal1 = 1
@@ -234,15 +250,60 @@ children <- children |>
 # if child does not have parents in household & is not related to householder, goal1 = 0
 # if child does not have parents in household but is related to householder, goal1 = 1
 
-
+# lookup table approach
 parent_child_lookup <- sipp_participants |>
   filter(reference_par == 1) |>
-  select(person_num, sample_unit_id, starts_with("child")) |>
+  select(person_num, sample_unit_id, starts_with("child"), starts_with("rrel")) |>
   select(-c(children_mult_partners, childbearing_union)) |>
-  rename(parent_person_num = person_num) |>
   pivot_longer(cols = starts_with("child"),
                names_to = "child",
                values_to = "child_person_number") |>
+  filter(!is.na(child_person_number)) |>
+  distinct() |>
+  pivot_longer(cols = starts_with("rrel_pnum"),
+               names_to = "hh_member_number",
+               values_to = "person_num_rel") |>
+  filter(!is.na(person_num_rel)) |>
+  distinct() |>
+  pivot_longer(cols = starts_with("rrel"),
+               names_to = "hh_member_number2",
+               values_to = "relationship") |>
+  filter(!is.na(relationship)) |>
+  distinct() |>
+  filter(person_num_rel == child_person_number) |>
+  distinct() |>
+  mutate(hh_member_number = extract_numeric(hh_member_number),
+         hh_member_number2 = extract_numeric(hh_member_number2)) |>
+  filter(hh_member_number == hh_member_number2) |>
+  distinct()
+
+parent_child_lookup <- parent_child_lookup |>
+  mutate(parent_number = person_num) |>
+  select(sample_unit_id, parent_number, child_person_number, relationship) |>
+  (distinct)()
+
+
+parent_child_lookup <- sipp_participants |>
+  filter(reference_par == 1) |>
+  select(person_num, sample_unit_id, starts_with("rrel")) |>
+  
+  rename(parent_person_num = person_num) |>
+  pivot_longer(cols = starts_with("rrel_pnum"),
+               names_to = "hh_member_number",
+               values_to = "person_num_rel") |>
+  filter(!is.na(person_num_rel))
+
+
+parent_child_lookup <- parent_child_lookup |>
+  pivot_longer(cols = starts_with("rrel"),
+               names_to = "hh_member_number2",
+               values_to = "relationship") 
+
+parent_child_lookup<- parent_child_lookup|>
+  filter(!is.na(relationship))
+
+
+
   filter(!is.na(child_person_number))
 
 ```
