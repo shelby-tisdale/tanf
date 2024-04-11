@@ -233,8 +233,10 @@ sipp <- sipp |>
     55 ~ "WISCONSIN",
     56 ~ "WYOMING",
     60 ~ "PUERTO RICO AND ISLAND AREAS",
-    61 ~ "FOREIGN COUNTRY"
-    ))
+    61 ~ "FOREIGN COUNTRY",
+    .default = as.character(state)
+    )) |>
+  filter(!is.na(state))
 
 # load new data
 #sipp <- read.csv("data/sipp.csv")
@@ -251,19 +253,20 @@ households_with_children <- sipp |>
   # household_address id differentiates parent from spawned households
   # residence address id is current residence for each month
   # what should be used as unique identifier for address?
-  group_by(sample_unit_id, interview_address_id, hh_address_id,
-           residence_address_id, year, month, state) |>
+  group_by(sample_unit_id, year, month, state) |>
   # count number of children in each household
-  summarize(hh_children_count = sum(age <= 18, na.rm = TRUE), .groups = "drop") |>
+  summarize(hh_children_count = sum(age < 18, na.rm = TRUE), .groups = "drop") |>
   # remove households without children
   filter(hh_children_count != 0) |>
   # select distinct households
-  select(sample_unit_id, interview_address_id, hh_address_id, year, month, state) |>
+  select(sample_unit_id, year, month, state) |>
   filter(!is.na(state)) |>
   distinct()
 
 # determine quantiles of monthly household income-to-poverty ratio
 # what income cutoff should I use?
+# find tanf eligible incomes
+# look into government income cutoffs - how to quantify low-income
 inc_pov_quantiles <- quantile(sipp$month_hh_inc_pov, na.rm = TRUE)
 
 # select low-income households
@@ -271,8 +274,9 @@ household_poverty <- sipp |>
   group_by(sample_unit_id, interview_address_id, residence_address_id,
            hh_address_id, year, month, state) |>
   summarise(low_income = if_else(month_hh_inc_pov <= inc_pov_quantiles[3], 1, 0)) |>
-  filter(low_income == 1 & !is.na(state)) |>
+  filter(low_income == 1) |>
   distinct()
+
 
 # create dataset with only households with children
 # that at some point are low-income
@@ -280,8 +284,6 @@ household_poverty <- sipp |>
 # dataset is quite small
 sipp_participants <- sipp |>
   filter(sample_unit_id %in% households_with_children$sample_unit_id &
-         interview_address_id %in% households_with_children$interview_address_id &
-         hh_address_id %in% households_with_children$hh_address_id &
          sample_unit_id %in% household_poverty$sample_unit_id)
 ```
 
@@ -289,6 +291,7 @@ sipp_participants <- sipp |>
 #| label: data-for-tanf-goal-one
 
 # reference parents and children
+
 # household relationship approach
 # first looks at whether the child has parents in the household
 # then uses householder relationship variable to determine whether they live
@@ -307,11 +310,11 @@ children <- sipp_participants |>
     # child who has at least one parent in household
     !is.na(parent1_num) | !is.na(parent2_num) ~ 1,
     # child who is only person in family
-    rfpersons == 1 ~ 0,
+    #rfpersons == 1 ~ 0,
     # householder with relatives
     is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 1 ~ 1,
-    # housholder no relatives
-    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 2 ~ 0,
+    # householder no relatives
+    #is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 2 ~ 0,
     # foster child
     is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 15 ~ 0,
     # grandchild
@@ -325,11 +328,10 @@ children <- sipp_participants |>
     # unmarried partner
     is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 4 ~ 0,
     # other nonrelative
-    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 18 ~ 0,
+    #is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 18 ~ 0,
     # brother/sister-in-law
-    is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 12 ~ 1
-  )) |>
-  drop_na(goal1)
+    #is.na(parent1_num) & is.na(parent2_num) & hh_relationship == 12 ~ 1
+  ))
 
 # there are three children where household relationship is parent/child-in-law??
 #children |>
@@ -380,12 +382,6 @@ parent_child_lookup <- sipp_participants |>
          relationship) |>
   rename(ref_parent_person_num = person_num, child_person_num = child_person_number)
 
-# match all children to reference parent
-# don't know if this is helpful
-children <- children |>
-  left_join(parent_child_lookup, by = join_by(
-    sample_unit_id, person_num == child_person_num, year, month))
-
 # evaluates whether tanf goal 1 is achieved for a household in a given year and month
 hh_goal1 <- children |>
   # group by year, mont, and household
@@ -397,6 +393,11 @@ hh_goal1 <- children |>
   mutate(hh_month_goal1 = if_else(avg_goal1 != 1, 0, 1))
 
 
+hh_goal1 |>
+  count(hh_month_goal1)
+
+
+# make lookup tables for fringe cases
 # next steps
 # bring in household demographic data
 # bring in predictor variables
