@@ -586,37 +586,56 @@ goal3 <- sipp_participants |>
 
 ```{r}
 
-goal_3_dev <- sipp_participants |>
-  # filters for women between ages 
+goal_3_women <- sipp_participants |>
+  # filters for women between ages 15 and 50 who are not married
   filter(age >= 15 & age <= 50 & marital_status != 1 & marital_status != 2 & sex == 2) |>
+  # select id variables and variables for birth years of children
   select(sample_unit_id, month, year, person_num, num_children, tcbyr_1:tcbyr_7) |>
+  # turn year and month into date object
   mutate(month = as.character(month)) |>
   mutate(month = if_else(nchar(month) == 1, paste("0", month, sep = ""), month)) |>
   mutate(year_month_day = ymd(paste(year, month, "01", sep = "-"))) |>
   group_by(sample_unit_id, person_num) |>
+  # find minimum and maximum date that each woman is unmarried and in sample
   mutate(min_date = min(year_month_day), max_date = max(year_month_day)) |>
   ungroup() |>
+  # create interval based on minimum and maximum date
   mutate(interval = interval(min_date, max_date)) |>
+  # pivot data so that each row is the birth year of one of the children of each woman
   pivot_longer(
     cols = starts_with("tcbyr"),
     names_to = "child_indicator",
     values_to = "birth_year"
   ) |>
+  # remove observations with no birth year
   filter(!is.na(birth_year)) |>
-  select(sample_unit_id, person_num, min_date, max_date, num_children, interval, birth_year) |>
-  distinct() |>
+  # create indicator for whether woman gave birth during time unmarried and in sample
   mutate(had_child_unmarried = if_else(
     birth_year > year(min_date) & birth_year < year(max_date), 1, 0)) |>
+  # creates data set of women who had children out-of-wedlock during time in sample
   filter(had_child_unmarried == 1) |>
   select(sample_unit_id, person_num, had_child_unmarried) |>
   distinct()
 
-hold <- sipp_participants |>
-  select(sample_unit_id, person_num, month, year, is_parent, num_children, age, childbearing_union, marital_status, unmarried_partner_num,
-         child1_num:child12_num) |>
-  right_join(goal_3_dev) |>
+# checking goal3 indicator with contextual data
+# indicator makes sense
+goal3_test <- sipp_participants |>
+  select(sample_unit_id, person_num, month, year, is_parent, num_children, age, childbearing_union,
+         marital_status, unmarried_partner_num, child1_num:child12_num) |>
+  right_join(goal_3_women) |>
   arrange(sample_unit_id, person_num, year, month)
 
+# goal 3 participants with indicator for whether goal 3 is fulfilled
+# disregards year and month levels
+goal3 <- sipp_participants |>
+  filter(age >= 15 & age <= 50 & marital_status != 1 & marital_status != 2 & sex == 2) |>
+  select(sample_unit_id, person_num) |>
+  left_join(goal_3_women, by = join_by(sample_unit_id, person_num)) |>
+  mutate(goal3 = if_else(is.na(had_child_unmarried), 1, 0)) |>
+  distinct()
+
+goal3 |>
+  count(goal3)
 ```
 
 # Creating Variables for Achievement of TANF Goal 4
