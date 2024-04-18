@@ -21,11 +21,12 @@ library(janitor)
 
 ```{r}
 #| label: load-tanf-data
+#| message: false
 
 # load federal tanf data
 tanf <- read_csv("data/total_expenditures_2015_2022.csv")
 
-# create dataset of state-year-level tanf data
+# creates dataset of relevant state-year-level tanf predictors 2018-2022
 tanf_state_year <- tanf |>
   # filter for relevant years
   filter(fiscal_year %in% c(2018:2022)) |>
@@ -35,8 +36,8 @@ tanf_state_year <- tanf |>
          pct_basic_assistance = basic_assistance/total_expenditures,
          pct_program_mgmt = program_mgmt/total_expenditures) |>
   # select relevant variables
-  select(state, fiscal_year, pct_unobligated, pct_program_mgmt, pct_basic_assistance)
-
+  select(state, fiscal_year, pct_unobligated, pct_program_mgmt,
+         pct_basic_assistance)
 ```
 
 ```{r}
@@ -103,7 +104,7 @@ sipp <- rbind.data.frame(sipp2022, sipp2021, sipp2020, sipp2019, sipp2018) |>
   clean_names()
 
 # download csv
-#write.csv(sipp, "sipp.csv")
+# write.csv(sipp, "sipp.csv")
 ```
 
 # Rename Variables
@@ -111,6 +112,7 @@ sipp <- rbind.data.frame(sipp2022, sipp2021, sipp2020, sipp2019, sipp2018) |>
 ```{r}
 #| label: rename-columns
 
+# rename variables to understandable names
 sipp <- sipp |>
   rename(
     hh_address_id = shhadid,
@@ -200,6 +202,7 @@ sipp <- sipp |>
     citizenship = ecitizen
     )
 
+# recode state names
 sipp <- sipp |>
   mutate(state = case_match(
     state,
@@ -261,7 +264,7 @@ sipp <- sipp |>
   filter(!is.na(state))
 
 # load new data
-#sipp <- read.csv("data/sipp.csv")
+# sipp <- read.csv("data/sipp.csv")
 ```
 
 # Filter Data for Relevant Participants
@@ -275,12 +278,11 @@ This dataset includes all low-income households that have at least one child in 
 # find households that have at least one child in any month
 households_with_children <- sipp |>
   # sample unit id is originally sampled household
-  # interview address id is residence where interview is conducted
-  # household_address id differentiates parent from spawned households
-  # residence address id is current residence for each month
+  # this will be used as the houshehold indicator
   group_by(sample_unit_id, year, month, state) |>
   # count number of children in each household
-  summarize(hh_children_count = sum(age < 18, na.rm = TRUE), .groups = "drop") |>
+  summarize(hh_children_count = sum(age < 18, na.rm = TRUE),
+            .groups = "drop") |>
   # remove households without children
   filter(hh_children_count != 0) |>
   # select distinct households
@@ -504,7 +506,7 @@ person_goal2 <- sipp_participants |>
   left_join(goal2, join_by(sample_unit_id)) |>
   mutate(goal2_participant = if_else(is.na(goal2_participant), 0, 1))
 
-count(sipp_tanf, is_married)
+#count(sipp_tanf, is_married)
 
 ```
 
@@ -769,9 +771,10 @@ sipp_all_goals <- sipp_participants |>
   left_join(person_goal2, by = join_by("sample_unit_id", "person_num", "age", "month", "year")) |>
   # join goal 4 achievement data
   left_join(hh_goal4, by = join_by("sample_unit_id")) |>
-  select(-avg_goal4) |>
+  select(-avg_goal4, -sex.y) |>
   rename(goal1 = hh_month_goal1,
-         goal4 = hh_goal4)
+         goal4 = hh_goal4,
+         sex = sex.x)
 ```
 
 # Add TANF Data

@@ -1,0 +1,417 @@
+---
+title: "Creation of Dataset for Hierarchical Model"
+author: "Shelby Tisdale"
+format: html
+---
+
+# Load Data and Packages
+
+```{r}
+#| label: load-packages
+library(tidyverse)
+library(data.table)
+library(bit64)
+library(janitor)
+```
+
+```{r}
+#| label: load-tanf-data
+#| message: false
+tanf <- read_csv("data/total_expenditures_2015_2022.csv")
+```
+
+```{r}
+#| label: state-year-tanf-data
+
+# creates dataset of relevant state-year-level tanf predictors 2018-2022
+tanf_state_year <- tanf |>
+  # filter for relevant years
+  filter(fiscal_year %in% c(2018:2022)) |>
+  # create variables for percent unobligated funds, percent spent on basic
+  # assistance, and percent spent on program management
+  mutate(pct_unobligated = unobligated_balance/(funds_awarded + carryover),
+         pct_basic_assistance = basic_assistance/total_expenditures,
+         pct_program_mgmt = program_mgmt/total_expenditures) |>
+  # select relevant variables
+  select(state, fiscal_year, pct_unobligated, pct_program_mgmt,
+         pct_basic_assistance)
+```
+
+```{r}
+#| label: load-sipp-data
+
+# create function for loading data
+load_sipp <- function(directory) {
+  ds <- c(directory)
+  sipp <- fread(ds, sep = "|", select = c(
+    # ID VARS
+   "SHHADID", "SPANEL", "SSUID", "SWAVE", "PNUM", "MONTHCODE", "GHLFSAM",
+   "EHRESIDENCID", "EINTTYPE", "ERESIDENCEID","RIN_UNIV",
+   "THHLDSTATUS", "TST_INTV", "EPNPAR1", "EPNPAR2", "EPNCOHAB", "EPNSPOUSE",
+   "RPNCHILD1", "RPNCHILD2", "RPNCHILD3", "RPNCHILD4", "RPNCHILD5", "RPNCHILD6",
+   "RPNCHILD7", "RPNCHILD8", "RPNCHILD9", "RPNCHILD10", "RPNCHILD11",
+   "RPNCHILD12",
+    # WEIGHTS AND SAMPLING
+   "GVARSTR", "WPFINWGT",
+   # OTHER
+   "EANYKID", "EBDAD", "EBMOM", "ECLTH_SR1YN", "EJB1_BSLRYB", "EJB1_SCRNR",
+   "EMPF", "EMS_EHC", "ENJ_LKWRK", "ENJFLAG", "EPAR_SCRNR", "EPAR1TYP",
+   "EPAR2TYP", "ERELRPE", "ETANF_BMONTH", "ETANF_COVTYP", "ETANF_EMONTH",
+   "ETANF_OWN", "ETANF_PTCS", "EWELAC_MNYN", "EWELACTV1", "EWELACTV2_1",
+   "EWELACTV2_2", "EWELACTV2_3", "EWELACTV4", "EXMAR", "RCB_UNION", "RCHTYP1",
+   "RCHTYP2", "RCHTYP3", "RCHTYP4","RCHTYP5", "RCHTYP6", "RCHTYP7","RCHTYP8",
+   "RCHTYP9", "RCHTYP10", "RCHTYP11", "RCHTYP12", "RSNAP_YRYN", "RTANF_CFLG",
+   "RTANF_LCYR", "RTANF_MNYN", "RGA_YRYN", "RTANF_YRYN", "RWIC_YRYN", "TAGE",
+   "TAGE_FB", "EUC1MNYN",
+   "TCEB", "TFCYINCPOV", "TFINCPOV", "THINCPOV", "TNUM_CBU", "TNUMKIDS",
+   "TPTRNINC", "TTANF_AMT", "TTANF_BRSN", "TTANF_ERSN", "TYEAR_FB", "ERP",
+   "RFAMNUM", "RFPERSONS",
+   # DEMOGRAPHICS
+   "EEDUC", "EORIGIN", "TRACE", "ESEX", "RAFEVER", "ECITIZEN",
+   # RELATIONSHIP DATA
+   "RREL1", "RREL2", "RREL3", "RREL4", "RREL5", "RREL6", "RREL7", "RREL8",
+   "RREL9", "RREL10", "RREL11", "RREL12", "RREL13", "RREL14", "RREL15",
+   "RREL16", "RREL17", "RREL18", "RREL19", "RREL20", "RREL21", "RREL22",
+   "RREL23", "RREL24", "RREL25", "RREL26", "RREL27", "RREL28", "RREL29",
+   "RREL30", "RREL_PNUM1", "RREL_PNUM2", "RREL_PNUM3", "RREL_PNUM4",
+   "RREL_PNUM5", "RREL_PNUM6", "RREL_PNUM7", "RREL_PNUM8", "RREL_PNUM9",
+   "RREL_PNUM10", "RREL_PNUM11", "RREL_PNUM12", "RREL_PNUM13", "RREL_PNUM14",
+   "RREL_PNUM15", "RREL_PNUM16", "RREL_PNUM17", "RREL_PNUM18", "RREL_PNUM19",
+   "RREL_PNUM20", "RREL_PNUM21", "RREL_PNUM22", "RREL_PNUM23", "RREL_PNUM24",
+   "RREL_PNUM25", "RREL_PNUM26", "RREL_PNUM27", "RREL_PNUM28", "RREL_PNUM29",
+   "RREL_PNUM30",
+   # CHILD BIRTH YEARS
+   "TCBYR_1", "TCBYR_2", "TCBYR_3", "TCBYR_4", "TCBYR_5", "TCBYR_6", "TCBYR_7"
+  ))
+  names(sipp) <- toupper(names(sipp))
+  return(sipp)
+}
+# load survey data for each year
+sipp2022 <- load_sipp("data/sipp/pu2022.csv") |>
+  mutate(year = 2022)
+sipp2021 <- load_sipp("data/sipp/pu2021.csv") |>
+  mutate(year = 2021)
+sipp2020 <- load_sipp("data/sipp/pu2020.csv") |>
+  mutate(year = 2020)
+sipp2019 <- load_sipp("data/sipp/pu2019.csv") |>
+  mutate(year = 2019)
+sipp2018 <- load_sipp("data/sipp/pu2018.csv") |>
+  mutate(year = 2018)
+
+# combine data frames
+sipp <- rbind.data.frame(sipp2022, sipp2021, sipp2020, sipp2019, sipp2018) |>
+  clean_names()
+
+# download csv
+# write.csv(sipp, "sipp.csv")
+```
+
+```{r}
+#| label: recode-states
+
+sipp <- sipp |>
+  mutate(state = case_match(
+    tst_intv,
+    1 ~ "ALABAMA",
+    2 ~ "ALASKA", 
+    4 ~ "ARIZONA",
+    5 ~ "ARKANSAS",
+    6 ~ "CALIFORNIA",
+    8 ~ "COLORADO",
+    9 ~ "CONNECTICUT",
+    10 ~ "DELAWARE",
+    11 ~ "DIST.OF COLUMBIA",
+    12 ~ "FLORIDA",
+    13 ~ "GEORGIA",
+    15 ~ "HAWAII",
+    16 ~ "IDAHO",
+    17 ~ "ILLINOIS",
+    18 ~ "INDIANA",
+    19 ~ "IOWA",
+    20 ~ "KANSAS",
+    21 ~ "KENTUCKY",
+    22 ~ "LOUISIANA",
+    23 ~ "MAINE",
+    24 ~ "MARYLAND",
+    25 ~ "MASSACHUSETTS",
+    26 ~ "MICHIGAN",
+    27 ~ "MINNESOTA",
+    28 ~ "MISSISSIPPI",
+    29 ~ "MISSOURI",
+    30 ~ "MONTANA",
+    31 ~ "NEBRASKA",
+    32 ~ "NEVADA",
+    33 ~ "NEW HAMPSHIRE",
+    34 ~ "NEW JERSEY",
+    35 ~ "NEW MEXICO",
+    36 ~ "NEW YORK",
+    37 ~ "NORTH CAROLINA",
+    38 ~ "NORTH DAKOTA",
+    39 ~ "OHIO",
+    40 ~ "OKLAHOMA",
+    41 ~ "OREGON",
+    42 ~ "PENNSYLVANIA",
+    44 ~ "RHODE ISLAND",
+    45 ~ "SOUTH CAROLINA",
+    46 ~ "SOUTH DAKOTA",
+    47 ~ "TENNESSEE",
+    48 ~ "TEXAS",
+    49 ~ "UTAH",
+    50 ~ "VERMONT",
+    51 ~ "VIRGINIA",
+    53 ~ "WASHINGTON",
+    54 ~ "WEST VIRGINIA",
+    55 ~ "WISCONSIN",
+    56 ~ "WYOMING",
+    60 ~ "PUERTO RICO AND ISLAND AREAS",
+    61 ~ "FOREIGN COUNTRY",
+    .default = as.character(tst_intv)
+    )) |>
+  filter(!is.na(state))
+```
+
+# Filter Data for Relevant Participants
+
+This dataset includes all low-income households that have at least one child in at least one month. Low-income households will be defined by looking at data on TANF eligibility by income and state. Households with TANF-eligible incomes will be included in the sample.
+
+```{r}
+#| label: find-participants
+#| warning: false
+
+# find all households that have at least one child in any month
+households_with_children <- sipp |>
+  # sample unit id is originally sampled household
+  # this will be used as an ID variable for household
+  # look at each household for each month it is in sample
+  group_by(ssuid, year, monthcode) |>
+  # count number of children in each household
+  summarize(hh_children_count = sum(tage < 18, na.rm = TRUE), .groups = "drop") |>
+  # remove households without children
+  filter(hh_children_count != 0) |>
+  # select distinct households
+  select(ssuid) |>
+  distinct()
+
+# excluding sample to families below poverty line
+# only families in deep poverty are eligible to receive TANF
+# find households who are below poverty line for at least one month in sample
+households_poverty <- sipp |>
+  group_by(ssuid, year, monthcode) |>
+  summarize(poverty = if_else(thincpov <= 1, 1, 0), .groups = "drop") |>
+  filter(poverty == 1) |>
+  select(ssuid) |>
+  distinct()
+
+# dataset of low-income households with children
+sipp_participants <- sipp |>
+  filter(ssuid %in% households_with_children$ssuid &
+      ssuid %in% households_poverty$ssuid)
+```
+
+# Creating Variable for Achievement of TANF Goal 1
+
+**Goal 1:** Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.
+
+**Criteria:** This goal is fulfilled for a given household and month if all children in the household have at least one relative in the household.
+
+```{r}
+#| label: tanf-goal-1
+
+# 1. Filter for all children in dataset
+# 2. Check whether child has parents in household
+# 3. Check child's relationship with householder.
+# 4. For children who are not related to householder,
+# check all household relationships for that child
+
+# If child has relative or parent in household, goal is fulfilled for that child.
+# If all children in the household have a parent or relative in the household,
+# then goal is fulfilled for household
+
+children <- sipp_participants |>
+  # filters for children
+  filter(tage < 18) |>
+  # select id variables
+  select(ssuid, year, monthcode, pnum, erelrpe, epnpar1, epnpar2,
+         starts_with("rrel")) |>
+    mutate(goal1 = case_when(
+    # child who has at least one parent in household
+    !is.na(epnpar1) | !is.na(epnpar2) ~ 1,
+    # child is householder with relatives
+    # applies to a few older children
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 1 ~ 1,
+    # foster child
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 15 ~ 0,
+    # grandchild
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 8 ~ 1,
+    # sibling
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 10 ~ 1,
+    # niece / nephew
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 13 ~ 1,
+    # other relative
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 14 ~ 1,
+    # indicator for fringe cases
+    .default = 2
+  ))
+
+# create lookup table for children and household relationships
+# for fringe cases (no parent in household, housholder is not relative)
+children_lookup <- children |>
+  # filter for fringe cases
+  filter(goal1 == 2) |>
+  mutate(child_pnum = pnum) |>
+  # child person number and sample unit id (id vars)
+  # relationship variables
+  select(child_pnum, ssuid, monthcode, year, erelrpe,
+         starts_with("rrel"), goal1) |>
+  # each row is a household member-child combination for a month, for
+  # person numbers of all  members of the household
+  pivot_longer(cols = starts_with("rrel_pnum"),
+               names_to = "hh_member_number",
+               values_to = "person_num_rel") |>
+  filter(!is.na(person_num_rel)) |>
+  distinct() |>
+  # each row is a household member-child combination for a month, for the
+  # person number and relationship to all members of household
+  pivot_longer(cols = starts_with("rrel"),
+               names_to = "hh_member_number2",
+               values_to = "relationship") |>
+  filter(!is.na(relationship)) |>
+  distinct() |>
+  # match household member numbers for relationship and person number variables
+  mutate(hh_member_number = parse_number(hh_member_number),
+         hh_member_number2 = parse_number(hh_member_number2)) |>
+  filter(hh_member_number == hh_member_number2) |>
+  distinct() |>
+  # remove relationship between child and self
+  filter(relationship != 99) |>
+  # select relevant variables for lookup
+  select(child_pnum, ssuid, year, monthcode, relationship, erelrpe,
+         goal1) |>
+  distinct() |>
+  # indicator for whether person is a relative of the child
+  mutate(goal1 = if_else(
+    relationship %in% c(5, 7, 8, 9, 10, 12, 16, 17), 1, 0)) |>
+  group_by(year, monthcode, ssuid, child_pnum) |>
+  # if average of relative indicators is greater than 0, child lives with at
+  # least one relative
+  summarize(goal1_avg = mean(goal1), .groups = "drop") |>
+  mutate(goal1 = if_else(goal1_avg == 0, 0, 1)) |>
+  select(-c(goal1_avg))    
+
+# match children dataset to lookup table to update goal fulfilled for fringe cases
+children <- children |>
+  left_join(children_lookup,
+            by = join_by("pnum" == "child_pnum", year, monthcode, ssuid)) |>
+  select(year, monthcode, ssuid, pnum, goal1.x, goal1.y) |>
+  mutate(goal1 = if_else(goal1.x == 2, goal1.y, goal1.x)) |>
+  select(-c(goal1.x, goal1.y))
+
+# evaluates whether tanf goal 1 is achieved for a household in a given year and month
+hh_goal1 <- children |>
+  # group by year, monthj, and household
+  group_by(year, monthcode, ssuid) |>
+  # determine average (over all children in household in that month)
+  # achievement of goal 1
+  summarise(avg_goal1 = mean(goal1, na.rm = TRUE), .groups = "drop") |>
+  # if goal1 = 0 for any child in household, goal1 is not achieved
+  mutate(hh_month_goal1 = if_else(avg_goal1 != 1, 0, 1)) |>
+  select(-avg_goal1)
+```
+
+# **Creating Variables for Achievement of TANF Goal 2**
+
+**Goal 2:** End the dependence of needy parents on government benefits by promoting job preparation, work, and marriage.
+
+**Participant Households:** All households who received government benefits in the earliest year of their participation in the study.
+
+**Criteria:** Goal 2 is fulfilled for a participant household if household members are no longer receiving government benefits by the end of the reference frame. Variables related to job preparation, work, and marriage will be used as predictors.
+
+```{r}
+#| label: tanf-goal-2
+
+
+```
+
+# **Creating Variable for Achievement of TANF Goal 3**
+
+**Goal 3:** Prevent and reduce the incidence of out-of-wedlock pregnancies
+
+**Note:** Evaluate at person-level instead of household-level
+
+**Participants:** Women age 15+, for all years in which they are unmarried
+
+**Criteria:** Goal 3 is fulfilled if number of children of an unmarried individual does not increase during reference period (will not catch all cases due to length of pregnancies, abortions, and miscarriages, but should catch most)
+
+```{r}
+#| label: tanf-goal-3
+
+goal_3_women <- sipp_participants |>
+  # filters for women between ages 15 and 50 who are not married
+  filter(tage >= 15 & tage <= 50 & ems_ehc != 1 & ems_ehc != 2 & esex == 2) |>
+  # select id variables and variables for birth years of children
+  select(ssuid, monthcode, year, pnum, tceb, tcbyr_1:tcbyr_7) |>
+  # turn year and month into date object
+  mutate(month = as.character(monthcode)) |>
+  mutate(month = if_else(nchar(month) == 1, paste("0", month, sep = ""),
+                         month)) |>
+  mutate(year_month_day = ymd(paste(year, month, "01", sep = "-"))) |>
+  group_by(ssuid, pnum) |>
+  # find minimum and maximum date that each woman is unmarried and in sample
+  mutate(min_date = min(year_month_day), max_date = max(year_month_day)) |>
+  ungroup() |>
+  # create interval based on minimum and maximum date
+  mutate(interval = interval(min_date, max_date)) |>
+  # pivot data so that each row is the birth year of one of the children of each woman
+  pivot_longer(
+    cols = starts_with("tcbyr"),
+    names_to = "child_indicator",
+    values_to = "birth_year"
+  ) |>
+  # remove observations with no birth year
+  filter(!is.na(birth_year)) |>
+  # create indicator for whether woman gave birth during time unmarried and in sample
+  mutate(had_child_unmarried = if_else(
+    birth_year > year(min_date) & birth_year < year(max_date), 1, 0)) |>
+  # creates data set of women who had children out-of-wedlock during time in sample
+  filter(had_child_unmarried == 1) |>
+  select(ssuid, pnum, had_child_unmarried) |>
+  distinct()
+
+# checking goal3 indicator with contextual data
+# indicator makes sense
+goal3_test <- sipp_participants |>
+  select(ssuid, pnum, monthcode, year, epar_scrnr, tceb, tage, rcb_union,
+         ems_ehc, epncohab, rpnchild1:rpnchild12) |>
+  right_join(goal_3_women, by = join_by(ssuid, pnum)) |>
+  arrange(ssuid, pnum, year, monthcode)
+
+# goal 3 participants with indicator for whether goal 3 is fulfilled
+# disregards year and month levels
+goal3 <- sipp_participants |>
+  filter(tage >= 15 & tage <= 50 & ems_ehc != 1 & ems_ehc != 2 & esex == 2) |>
+  select(ssuid, pnum) |>
+  left_join(goal_3_women, by = join_by(ssuid, pnum)) |>
+  mutate(goal3 = if_else(is.na(had_child_unmarried), 1, 0)) |>
+  select(-had_child_unmarried) |>
+  distinct()
+```
+
+# **Creating Variables for Achievement of TANF Goal 4**
+
+**Goal:** Encourage the formation and maintenance of two-parent families.
+
+**Participants:** Households with children and at least one parent
+
+**Criteria:** one parent family is two-parent family at end of reference period, two-parent family is still two-parent family
+
+```{r}
+#| label: tanf-goal-4
+
+
+
+```
+
+```{r}
+#| label: data-all-goals
+
+```
