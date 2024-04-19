@@ -531,7 +531,10 @@ hh_goal4 <- goal4 |>
 
 sipp_all_goals <- sipp_participants |>
   # select necessary variables
-  select(ssuid, pnum, monthcode, year, tage, state, eeduc, eorigin, trace, esex, ecitizen, tceb) |>
+  select(ssuid, pnum, monthcode, year, tage, state, eeduc, eorigin, trace, esex, ecitizen, tceb,
+  # tanf variables
+  etanf_bmonth, rtanf_lcyr, etanf_emonth, etanf_covtyp, etanf_own, rtanf_cflg,
+  rtanf_mnyn, rtanf_yryn, ttanf_amt) |>
   # clean up variables 
   mutate(
     education = case_match(
@@ -593,5 +596,119 @@ sipp_all_goals <- sipp_participants |>
   left_join(hh_goal4, by = join_by("ssuid")) |>
   select(-avg_goal4) |>
   rename(goal1 = hh_month_goal1,
-         goal4 = hh_goal4)
+         goal4 = hh_goal4) |>
+  # join to tanf data
+  left_join(tanf_state_year, by = join_by("state", "year" == "fiscal_year")) |>
+  # select variables in desired order
+  select(
+  # id variables
+  ssuid, pnum, monthcode, year,
+  # demographics
+  tage, state, education, ethnicity, race, sex, citizenship, tceb,
+  # goal fulfillment indicators
+  in_goal1, in_goal2, in_goal3, in_goal4, goal1, goal2, goal3, goal4,
+  # state-level predictors
+  pct_unobligated, pct_program_mgmt, pct_basic_assistance,
+  # individual predictors
+  received_job_training, hh_married_month,
+  # tanf variables
+  etanf_bmonth, rtanf_lcyr, etanf_emonth, etanf_covtyp, etanf_own,
+  rtanf_cflg, rtanf_mnyn, rtanf_yryn, ttanf_amt
+  ) |>
+  # variable for party of governor in that year
+  mutate(party = case_when(
+    state == "ALABAMA" ~ "R",
+    state == "ALASKA" & year > 2018 ~ "R",
+    state == "ALASKA" & year == 2018 ~ "I",
+    state == "ARIZONA" ~ "R",
+    state == "ARKANSAS" ~ "R",
+    state == "CALIFORNIA" ~ "D",
+    state == "COLORADO" ~ "D",
+    state == "CONNECTICUT" ~ "D",
+    state == "DELAWARE" ~ "D",
+    state == "DIST.OF COLUMBIA" ~ "D",
+    state == "FLORIDA" ~ "R",
+    state == "GEORGIA"~ "R",
+    state == "HAWAII" ~ "D",
+    state == "IDAHO" ~ "R",
+    state == "ILLINOIS" & year == 2018 ~ "R",
+    state == "ILLINOIS" & year > 2018 ~ "D",
+    state == "INDIANA" ~ "R",
+    state == "IOWA" ~ "R",
+    state == "KANSAS" & year == 2018 ~ "R",
+    state == "KANSAS" & year > 2018 ~ "D",
+    state == "KENTUCKY" & year == 2018 ~ "R",
+    state == "KENTUCKY" & year > 2018 ~ "D",
+    state == "LOUISIANA" ~ "D",
+    state == "MAINE" & year == "2018" ~ "R",
+    state == "MAINE" & year > "2018" ~ "D",
+    state == "MARYLAND" ~ "R",
+    state == "MASSACHUSETTS" ~ "R",
+    state == "MICHIGAN" & year == 2018 ~ "R",
+    state == "MICHIGAN" & year > 2018 ~ "D",
+    state == "MINNESOTA" ~ "D",
+    state == "MISSISSIPPI" ~ "R",
+    state == "MISSOURI" ~ "R",
+    state == "MONTANA" & year < 2021 ~ "D",
+    state == "MONTANA" & year >= 2021 ~ "R",
+    state == "NEBRASKA" ~ "R",
+    state == "NEVADA" & year == 2018 ~ "R",
+    state == "NEVADA" & year > 2018 ~ "D",
+    state == "NEW HAMPSHIRE" ~ "R",
+    state == "NEW JERSEY" ~ "D",
+    state == "NEW MEXICO" & year == 2018 ~ "R",
+    state == "NEW MEXICO" & year > 2018 ~ "D",
+    state == "NEW YORK" ~ "D",
+    state == "NORTH CAROLINA" ~ "D",
+    state == "NORTH DAKOTA" ~ "R",
+    state == "OHIO" ~ "R",
+    state == "OKLAHOMA" ~ "R",
+    state == "OREGON" ~ "D",
+    state == "PENNSYLVANIA" ~ "D",
+    state == "RHODE ISLAND" ~ "D",
+    state == "SOUTH CAROLINA" ~ "R",
+    state == "SOUTH DAKOTA" ~ "R",
+    state == "TENNESSEE" ~ "R",
+    state == "TEXAS" ~ "R",
+    state == "UTAH" ~ "R",
+    state == "VERMONT" ~ "R",
+    state == "VIRGINIA" ~ "D",
+    state == "WASHINGTON" ~ "D",
+    state == "WEST VIRGINIA" & year < 2020 ~ "D",
+    state == "WEST VIRGINIA" & year >= 2020 ~ "R",
+    state == "WISCONSIN" & year == 2018 ~ "R",
+    state == "WISCONSIN" & year > 2018 ~ "D",
+    state == "WYOMING" ~ "R"
+  )) |>
+  rename(
+    household_id = ssuid,
+    month = monthcode,
+    age = tage,
+    total_children = tceb,
+    tanf_begin_month = etanf_bmonth,
+    tanf_initial_year = rtanf_lcyr,
+    tanf_end_month = etanf_emonth,
+    tanf_coverage_type = etanf_covtyp,
+    tanf_owner = etanf_own,
+    tanf_continue_flag = rtanf_cflg,
+    tanf_received_month = rtanf_mnyn,
+    tanf_received_year = rtanf_yryn,
+    tanf_amt_received = ttanf_amt
+  ) |>
+  mutate(
+    tanf_coverage_type = case_match(
+      tanf_coverage_type,
+      1 ~ "Only children",
+      2 ~ "Only a pregnant woman",
+      3 ~ "Both children and adults"
+    ),
+    tanf_continue_flag = case_match(
+      tanf_continue_flag,
+      1 ~ "Receipt ended month 12",
+      2 ~ "Receipt ended after month 12 and before interview",
+      3 ~ "Receipt continued into interview month"
+    ),
+    tanf_received_month = if_else(tanf_received_month == 1, 1, 0),
+    tanf_received_year = if_else(tanf_received_year == 1, 1, 0)
+  )
 ```
