@@ -8,10 +8,10 @@ The document `sipp_data_cleaning.qmd` contains all code to create the final data
 
 ### Data Dictionary
 
-### `sipp_tanf.csv` 
+### `sipp_tanf.csv`
 
 | Variable                | Type        | Level          | Description | Source                                                                                                                                |
-|---------------|------------|-----------|-----------------|------------------|
+|-------------------------|-------------|----------------|-------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | `household_id`          | ID; numeric | Household      |             | [Survey of Income and Program Participation Data](https://www.census.gov/programs-surveys/sipp/data/datasets.html){.uri}              |
 | `pnum`                  | ID; numeric | Person         |             | [Survey of Income and Program Participation Data](https://www.census.gov/programs-surveys/sipp/data/datasets.html){.uri}              |
 | `month`                 | numeric     | Person-month   |             | [Survey of Income and Program Participation Data](https://www.census.gov/programs-surveys/sipp/data/datasets.html){.uri}              |

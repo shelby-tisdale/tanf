@@ -26,7 +26,7 @@ tanf <- read_csv("data/total_expenditures_2015_2022.csv")
 # creates dataset of relevant state-year-level tanf predictors 2018-2022
 tanf_state_year <- tanf |>
   # filter for relevant years
-  filter(fiscal_year %in% c(2018:2022)) |>
+  filter(fiscal_year %in% c(2017:2021)) |>
   # create variables for percent unobligated funds, percent spent on basic
   # assistance, and percent spent on program management
   mutate(pct_unobligated = unobligated_balance/(funds_awarded + carryover),
@@ -88,15 +88,15 @@ load_sipp <- function(directory) {
 }
 # load survey data for each year
 sipp2022 <- load_sipp("data/sipp/pu2022.csv") |>
-  mutate(year = 2022)
-sipp2021 <- load_sipp("data/sipp/pu2021.csv") |>
   mutate(year = 2021)
-sipp2020 <- load_sipp("data/sipp/pu2020.csv") |>
+sipp2021 <- load_sipp("data/sipp/pu2021.csv") |>
   mutate(year = 2020)
-sipp2019 <- load_sipp("data/sipp/pu2019.csv") |>
+sipp2020 <- load_sipp("data/sipp/pu2020.csv") |>
   mutate(year = 2019)
-sipp2018 <- load_sipp("data/sipp/pu2018.csv") |>
+sipp2019 <- load_sipp("data/sipp/pu2019.csv") |>
   mutate(year = 2018)
+sipp2018 <- load_sipp("data/sipp/pu2018.csv") |>
+  mutate(year = 2017)
 
 # combine data frames
 sipp <- rbind.data.frame(sipp2022, sipp2021, sipp2020, sipp2019, sipp2018) |>
@@ -281,7 +281,7 @@ children_lookup <- children |>
          hh_member_number2 = parse_number(hh_member_number2)) |>
   filter(hh_member_number == hh_member_number2) |>
   # remove relationship between child and self
-  filter(relationship != 99) |>
+  #filter(relationship != 99) |>
   # select relevant variables for lookup
   select(child_pnum, ssuid, year, monthcode, relationship, goal1) |>
   # indicator for whether person is a relative of the child
@@ -294,6 +294,8 @@ children_lookup <- children |>
   mutate(goal1_lookup = if_else(goal1_avg == 0, 0, 1)) |>
   select(-c(goal1_avg)) 
 
+filter(children_lookup, is.na(goal1_lookup))
+
 # match children dataset to lookup table to update goal fulfilled for fringe cases
 children <- children |>
   left_join(children_lookup,
@@ -303,7 +305,7 @@ children <- children |>
 
 # evaluates whether tanf goal 1 is achieved for a household in a given year and month
 hh_goal1 <- children |>
-  # group by year, monthj, and household
+  # group by year, month, and household
   group_by(year, monthcode, ssuid) |>
   # determine average (over all children in household in that month)
   # achievement of goal 1
@@ -436,11 +438,12 @@ goal_3_women <- sipp_participants |>
   filter(!is.na(birth_year)) |>
   # create indicator for whether woman gave birth during time unmarried and in sample
   mutate(had_child_unmarried = if_else(
-    birth_year > year(min_date) & birth_year < year(max_date), 1, 0)) |>
+    birth_year >= year(min_date) & birth_year <= year(max_date), 1, 0)) |>
   # creates data set of women who had children out-of-wedlock during time in sample
   filter(had_child_unmarried == 1) |>
   select(ssuid, pnum, had_child_unmarried) |>
   distinct()
+
 
 # checking goal3 indicator with contextual data
 # indicator makes sense
@@ -459,6 +462,8 @@ goal3 <- sipp_participants |>
   mutate(goal3 = if_else(is.na(had_child_unmarried), 1, 0)) |>
   select(-had_child_unmarried) |>
   distinct()
+
+count(goal3, goal3)
 ```
 
 # **Creating Variables for Achievement of TANF Goal 4**
