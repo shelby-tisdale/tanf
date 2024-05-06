@@ -112,5 +112,29 @@ expenditures_bar |>
   theme_minimal() +
   labs(y = NULL, x = "Average Amount of Funding Per Year")
 ```
+```{r}
+expenditures_bar <- expenditures |>
+  pivot_longer(cols = funds_awarded:unobligated_balance, names_to = "category", values_to = "amount") |>
+  group_by(category, state) |>
+  summarize(average_amount = mean(amount), .groups = "drop") |>
+  mutate(category = case_when(
+    category %in% c("basic_assistance") ~ "Direct Cash Assistance",
+    category %in% c("other_assistance", "non_assistance", "work_ed", "work_supports", "early_ed", "financial_ed", "eitc_refundable", "non_eitc_refundable", "short_term_benefits", "support__services", "children_youth_services", "pregnancy_prevention", "fatherhood_programs", "child_welfare", "home_visiting", "other") ~ "Subgrants",
+    category == "unobligated_balance" ~ "Unobligated",
+    category == "program_mgmt" ~ "Program Management"
+  )) |>
+  filter(!is.na(category))
+
+expenditures_bar |>
+  mutate(category = fct_relevel(category, c("Unobligated", "Program Management", "Subgrants", "Direct Cash Assistance"))) |>
+  ggplot(aes(y = fct_rev(state))) +
+  geom_col(aes(x = average_amount, fill = category), position = "fill") +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal() +
+  labs(y = NULL, x = "Average Percent of TANF Block Grant Per Year") +
+  theme(legend.position = "top") +
+  guides(fill = guide_legend(title = NULL, reverse = T,
+                             override.aes = list(size = 4)))
+```
 
 

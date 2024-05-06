@@ -312,7 +312,7 @@ hh_goal1 <- children |>
   mutate(hh_month_goal1 = if_else(avg_goal1 != 1, 0, 1)) |>
   select(-avg_goal1)
 
-filter(hh_goal1, is.na(hh_month_goal1))
+filter(hh_goal1, is.na(hh_month_goal1))d
 ```
 
 # **Creating Variables for Achievement of TANF Goal 2**
@@ -619,7 +619,7 @@ sipp_all_goals <- sipp_participants |>
   mutate(party = case_when(
     state == "ALABAMA" ~ "R",
     state == "ALASKA" & year > 2018 ~ "R",
-    state == "ALASKA" & year == 2018 ~ "I",
+    state == "ALASKA" & year <= 2018 ~ "I",
     state == "ARIZONA" ~ "R",
     state == "ARKANSAS" ~ "R",
     state == "CALIFORNIA" ~ "D",
@@ -631,20 +631,20 @@ sipp_all_goals <- sipp_participants |>
     state == "GEORGIA"~ "R",
     state == "HAWAII" ~ "D",
     state == "IDAHO" ~ "R",
-    state == "ILLINOIS" & year == 2018 ~ "R",
+    state == "ILLINOIS" & year <= 2018 ~ "R",
     state == "ILLINOIS" & year > 2018 ~ "D",
     state == "INDIANA" ~ "R",
     state == "IOWA" ~ "R",
-    state == "KANSAS" & year == 2018 ~ "R",
+    state == "KANSAS" & year <= 2018 ~ "R",
     state == "KANSAS" & year > 2018 ~ "D",
-    state == "KENTUCKY" & year == 2018 ~ "R",
+    state == "KENTUCKY" & year <= 2018 ~ "R",
     state == "KENTUCKY" & year > 2018 ~ "D",
     state == "LOUISIANA" ~ "D",
-    state == "MAINE" & year == "2018" ~ "R",
+    state == "MAINE" & year <= "2018" ~ "R",
     state == "MAINE" & year > "2018" ~ "D",
     state == "MARYLAND" ~ "R",
     state == "MASSACHUSETTS" ~ "R",
-    state == "MICHIGAN" & year == 2018 ~ "R",
+    state == "MICHIGAN" & year <= 2018 ~ "R",
     state == "MICHIGAN" & year > 2018 ~ "D",
     state == "MINNESOTA" ~ "D",
     state == "MISSISSIPPI" ~ "R",
@@ -652,11 +652,12 @@ sipp_all_goals <- sipp_participants |>
     state == "MONTANA" & year < 2021 ~ "D",
     state == "MONTANA" & year >= 2021 ~ "R",
     state == "NEBRASKA" ~ "R",
-    state == "NEVADA" & year == 2018 ~ "R",
+    state == "NEVADA" & year <= 2018 ~ "R",
     state == "NEVADA" & year > 2018 ~ "D",
     state == "NEW HAMPSHIRE" ~ "R",
-    state == "NEW JERSEY" ~ "D",
-    state == "NEW MEXICO" & year == 2018 ~ "R",
+    state == "NEW JERSEY" & year <= 2017 ~ "R",
+    state == "NEW JERSEY"& year > 2017 ~ "D",
+    state == "NEW MEXICO" & year <= 2018 ~ "R",
     state == "NEW MEXICO" & year > 2018 ~ "D",
     state == "NEW YORK" ~ "D",
     state == "NORTH CAROLINA" ~ "D",
@@ -676,7 +677,7 @@ sipp_all_goals <- sipp_participants |>
     state == "WASHINGTON" ~ "D",
     state == "WEST VIRGINIA" & year < 2020 ~ "D",
     state == "WEST VIRGINIA" & year >= 2020 ~ "R",
-    state == "WISCONSIN" & year == 2018 ~ "R",
+    state == "WISCONSIN" & year <= 2018 ~ "R",
     state == "WISCONSIN" & year > 2018 ~ "D",
     state == "WYOMING" ~ "R"
   )) |>
@@ -711,4 +712,14 @@ sipp_all_goals <- sipp_participants |>
     tanf_received_month = if_else(tanf_received_month == 1, 1, 0),
     tanf_received_year = if_else(tanf_received_year == 1, 1, 0)
   )
+
+write.csv(sipp_all_goals, "sipp_all_goals.csv")
+```
+
+```{r}
+sipp_all_goals |>
+  filter(!is.na(goal4)) |>
+  select(household_id, month, goal4) |>
+  distinct() |>
+  count(goal4)
 ```
