@@ -733,3 +733,32 @@ sipp_all_goals <- sipp_participants |>
 # save data 
 # write.csv(sipp_all_goals, "sipp_all_goals.csv")
 ```
+
+# Create Table I
+
+```{r}
+sipp_all_goals |>
+  select(household_id, month, year, goal1) |>
+  mutate(goal1 = factor(goal1)) |>
+  distinct() |>
+  tbl_summary(by = year, include = c(year, goal1))
+
+sipp_all_goals |>
+  select(household_id, goal2) |>
+  mutate(goal2 = factor(goal2)) |>
+  distinct() |>
+  tbl_summary(include = c(goal2))
+
+# change to household level?
+sipp_all_goals |>
+  select(household_id, pnum, goal3) |>
+  mutate(goal3 = factor(goal3)) |>
+  distinct() |>
+  tbl_summary(include = c(goal3))
+
+sipp_all_goals |>
+  select(household_id, year, month, goal4) |>
+  mutate(goal4 = factor(goal4)) |>
+  distinct() |>
+  tbl_summary(by = year, include = c(goal4))
+```
