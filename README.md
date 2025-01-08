@@ -1,3 +1,8 @@
+---
+format: html
+title: README
+---
+
 # tanf
 
 This repository contains all code and data for my senior honors thesis project at Duke University, "The Diminishing Cash Safety Net: Predicting Fulfillment of TANF Goals from Unobligated Funds with Bayesian Hierarchical Modeling. This is a developing project.
