@@ -12,6 +12,8 @@ library(tidyverse)
 library(data.table)
 library(bit64)
 library(janitor)
+library(gt)
+library(gtsummary)
 ```
 
 ```{r}
@@ -312,7 +314,7 @@ hh_goal1 <- children |>
   mutate(hh_month_goal1 = if_else(avg_goal1 != 1, 0, 1)) |>
   select(-avg_goal1)
 
-filter(hh_goal1, is.na(hh_month_goal1))d
+filter(hh_goal1, is.na(hh_month_goal1))
 ```
 
 # **Creating Variables for Achievement of TANF Goal 2**
@@ -714,12 +716,4 @@ sipp_all_goals <- sipp_participants |>
   )
 
 write.csv(sipp_all_goals, "sipp_all_goals.csv")
-```
-
-```{r}
-sipp_all_goals |>
-  filter(!is.na(goal4)) |>
-  select(household_id, month, goal4) |>
-  distinct() |>
-  count(goal4)
 ```
