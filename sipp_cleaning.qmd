@@ -28,7 +28,7 @@ tanf <- read_csv("data/total_expenditures_2015_2022.csv")
 # creates dataset of relevant state-year-level tanf predictors 2018-2022
 tanf_state_year <- tanf |>
   # filter for relevant years
-  filter(fiscal_year %in% c(2017:2021)) |>
+  filter(fiscal_year %in% c(2017:2022)) |>
   # create variables for percent unobligated funds, percent spent on basic
   # assistance, and percent spent on program management
   mutate(pct_unobligated = unobligated_balance/(funds_awarded + carryover),
@@ -528,6 +528,8 @@ hh_goal4 <- goal4 |>
 
 ```
 
+# Clean Variables and Combine All Datasets
+
 ```{r}
 #| label: data-all-goals
 
@@ -574,7 +576,19 @@ sipp_all_goals <- sipp_participants |>
       9 ~ "Black-AIAN",
       10 ~ "Other"
     ),
-    citizenship = if_else(ecitizen == 1, 1, 0)
+    citizenship = if_else(ecitizen == 1, 1, 0),
+    fiscal_year = case_when(
+      year == 2018 & monthcode < 10 ~ 2018,
+      year == 2018 & monthcode >= 10 ~ 2019,
+      year == 2019 & monthcode < 10 ~ 2019,
+      year == 2019 & monthcode >= 10 ~ 2020,
+      year == 2020 & monthcode < 10 ~ 2020,
+      year == 2020 & monthcode >= 10 ~ 2021,
+      year == 2021 & monthcode < 10 ~ 2021,
+      year == 2021 & monthcode >= 10 ~ 2022,
+      year == 2022 & monthcode < 10 ~ 2022,
+      year == 2022 & monthcode >= 10 ~ 2023
+    )
   ) |>
   select(-c(ecitizen, trace, eeduc, esex, eorigin)) |>
   # create indicators for whether this person-month is included in the sample for a certain goal
@@ -600,11 +614,11 @@ sipp_all_goals <- sipp_participants |>
   rename(goal1 = hh_month_goal1,
          goal4 = hh_goal4) |>
   # join to tanf data
-  left_join(tanf_state_year, by = join_by("state", "year" == "fiscal_year")) |>
+  left_join(tanf_state_year, by = join_by("state", "fiscal_year")) |>
   # select variables in desired order
   select(
   # id variables
-  ssuid, pnum, monthcode, year,
+  ssuid, pnum, monthcode, year, fiscal_year,
   # demographics
   tage, state, education, ethnicity, race, sex, citizenship, tceb,
   # goal fulfillment indicators
@@ -683,6 +697,7 @@ sipp_all_goals <- sipp_participants |>
     state == "WISCONSIN" & year > 2018 ~ "D",
     state == "WYOMING" ~ "R"
   )) |>
+  # rename variables
   rename(
     household_id = ssuid,
     month = monthcode,
@@ -715,5 +730,6 @@ sipp_all_goals <- sipp_participants |>
     tanf_received_year = if_else(tanf_received_year == 1, 1, 0)
   )
 
-write.csv(sipp_all_goals, "sipp_all_goals.csv")
+# save data 
+# write.csv(sipp_all_goals, "sipp_all_goals.csv")
 ```
