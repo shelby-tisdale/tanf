@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.353">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Shelby Tisdale">
+
+<title>tanf</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="README_files/libs/clipboard/clipboard.min.js"></script>
+<script src="README_files/libs/quarto-html/quarto.js"></script>
+<script src="README_files/libs/quarto-html/popper.min.js"></script>
+<script src="README_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="README_files/libs/quarto-html/anchor.min.js"></script>
+<link href="README_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="README_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="README_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="README_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="README_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">tanf</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Shelby Tisdale </p>
+          </div>
+  </div>
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<p>This repository contains all code and data for my senior honors thesis project at Duke University, “The Diminishing Cash Safety Net: Predicting Fulfillment of TANF Goals from Unobligated Funds with Bayesian Hierarchical Modeling. This is a developing project.</p>
+<section id="data" class="level2">
+<h2 class="anchored" data-anchor-id="data">Data</h2>
+<p>The document <code>sipp_data_cleaning.qmd</code> contains all code to create the final dataset <code>sipp_tanf.csv</code> included in the <code>\data</code> folder. Each variable in the dataset is at one of __ levels to be included in the hierarchical model. The dataset contains 511497 observations of 36 variables. Each observation is an individual in a month.</p>
+<section id="data-dictionary" class="level3">
+<h3 class="anchored" data-anchor-id="data-dictionary">Data Dictionary</h3>
+</section>
+<section id="sipp_tanf.csv" class="level3">
+<h3 class="anchored" data-anchor-id="sipp_tanf.csv"><code>sipp_tanf.csv</code></h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Variable</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>household_id</code></td>
+<td>ID; numeric</td>
+<td><p>Household identifier. Can be used to match households in different survey years.</p>
+<p><strong>Level:</strong> Household</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>pnum</code></td>
+<td>ID; numeric</td>
+<td><p>Person number. Each individual in a household is given a distinct person number for that household.</p>
+<p><strong>Level:</strong> Person</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>month</code></td>
+<td>numeric</td>
+<td><p>Reference month.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>year</code></td>
+<td>numeric</td>
+<td><p>Survey panel year (reference year).</p>
+<p>Level: Household-year</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>age</code></td>
+<td>numeric</td>
+<td><p>Age as of last birthday</p>
+<p><strong>Level:</strong> Person-year</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>state</code></td>
+<td>character</td>
+<td><p>State of residence for the interview address.</p>
+<p><strong>Level:</strong> Household</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>education</code></td>
+<td>character</td>
+<td><p>Highest level of education received by December of reference year.</p>
+<p><strong>Level:</strong> Person</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>ethnicity</code></td>
+<td>character</td>
+<td><p>Whether person is of Hispanic, Latino or Spanish origin.</p>
+<p><strong>Level:</strong> Person</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>race</code></td>
+<td>character</td>
+<td><p>Race (detailed categories).</p>
+<p><strong>Level:</strong> Person</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>sex</code></td>
+<td>character</td>
+<td><p>Sex assigned at birth.</p>
+<p><strong>Level:</strong> Person</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>citizenship</code></td>
+<td>numeric</td>
+<td><p>Whether person is a U.S. citizen.</p>
+<p><strong>Level:</strong> Person</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>total_children</code></td>
+<td>numeric</td>
+<td><p>Children ever born or fathered.</p>
+<p><strong>Level:</strong> Household-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>in_goal1</code></td>
+<td>numeric</td>
+<td><p>Indicator for whether household fits criteria to be evaluated for TANF Goal 1: “Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.”</p>
+<p><code>in_goal1</code> = 1 if at least one child lives in household during any year of the survey.</p>
+<p><strong>Level:</strong> Household-month</p>
+<p><strong>Source:</strong> derived from <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>in_goal2</code></td>
+<td>numeric</td>
+<td><p>Indicator for whether household fits criteria to be evaluated for TANF Goal 2: “End the dependence of needy parents on government benefits by promoting job preparation, work, and marriage.”</p>
+<p><code>in_goal2</code> = 1 if household is receiving any kind of government benefits in their earliest year of participation in the study (during reference time frame).</p>
+<p><strong>Level:</strong> Household</p>
+<p><strong>Source:</strong> derived from <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>in_goal3</code></td>
+<td>numeric</td>
+<td><p>Indicator for whether household fits criteria to be evaluated for TANF Goal 3: “Prevent and reduce the incidence of out-of-wedlock pregnancies”</p>
+<p><code>in_goal3</code> = 1 if person is a woman over the age of 14 and is unmarried in reference year.<br>
+</p>
+<p><strong>Level:</strong> Person</p>
+<p><strong>Source:</strong> derived from <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>in_goal4</code></td>
+<td>numeric</td>
+<td><p>Indicator for whether household fits criteria to be evaluated for TANF Goal 4: “Encourage the formation and maintenance of two-parent families.”</p>
+<p><code>in_goal4</code> = 1 if household includes at least one child and at least one parent.</p>
+<p><strong>Level:</strong> Household</p>
+<p><strong>Source:</strong> derived from <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>goal1</code></td>
+<td>numeric</td>
+<td><p>Indicates whether TANF Goal 1 is fulfilled for the given household and month.</p>
+<p><code>goal1</code> = 1 if all children in the household have at least one relative in the household.</p>
+<p><strong>Level:</strong> Household-month</p>
+<p><strong>Source:</strong> derived from <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>goal2</code></td>
+<td>numeric</td>
+<td><p>Indicates whether TANF Goal 2 is fulfilled for the given household.</p>
+<p><code>goal2</code> = 1 if household members are no longer receiving government benefits by the end of the reference period.</p>
+<p><strong>Level:</strong> Household</p>
+<p><strong>Source:</strong> derived from <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>goal3</code></td>
+<td>numeric</td>
+<td><p>Indicates whether TANF Goal 3 is fulfilled for the given person.</p>
+<p><code>goal3</code> = 1 if the number of children of an unmarried individual does not increase during the reference period.</p>
+<p><strong>Level:</strong> Person</p>
+<p><strong>Source:</strong> derived from <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>goal4</code></td>
+<td>numeric</td>
+<td><p>Indicates whether TANF Goal 4 is fulfilled for the given household.</p>
+<p>If the household is a one-parent family, <code>goal4</code> = 1 if the family is a two-parent family at the end of the reference period.</p>
+<p>If the household is a two-parent family, <code>goal4</code> = 1 if the family is still a two-parent family at the end of the reference period.</p>
+<p><strong>Level:</strong> Household</p>
+<p><strong>Source:</strong> derived from <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>pct_unobligated</code></td>
+<td>numeric</td>
+<td><p>Percent of available TANF funds unobligated. Calculated by dividing unobligated balance for fiscal year by the sum of awarded yearly funds and carryover from previous year.</p>
+<p><strong>Level:</strong> State-year</p>
+<p><strong>Source:</strong> derived from <a href="https://www.acf.hhs.gov/ofa/programs/tanf/data-reports" class="uri">TANF Financial Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>pct_program_mgmt</code></td>
+<td>numeric</td>
+<td><p>Percent of total expenditures allotted to program management expenses (administrative costs, assessment &amp; service provision, systems)</p>
+<p><strong>Level:</strong> State-year</p>
+<p><strong>Source:</strong> derived from <a href="https://www.acf.hhs.gov/ofa/programs/tanf/data-reports" class="uri">TANF Financial Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>pct_basic_assistance</code></td>
+<td>numeric</td>
+<td><p>Percent of total expenditures allotted to basic assistance (cash, payments, vouchers, and other forms of benefits designed to meet a family’s ongoing basic needs).</p>
+<p><strong>Level:</strong> State-year</p>
+<p><strong>Source:</strong> derived from derived from <a href="https://www.acf.hhs.gov/ofa/programs/tanf/data-reports" class="uri">TANF Financial Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>received_job_training</code></td>
+<td>numeric</td>
+<td><p>Indicator for whether person received any kind of job training in reference month.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> derived from <a href="https://www.acf.hhs.gov/ofa/programs/tanf/data-reports" class="uri">TANF Financial Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>hh_married_month</code></td>
+<td>numeric</td>
+<td><p>Indicates whether householder is married in reference month.</p>
+<p><strong>Level:</strong> Person</p>
+<p><strong>Source:</strong> derived from <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>tanf_begin_month</code></td>
+<td>numeric</td>
+<td><p>Beginning month of TANF receipt.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>tanf_initial_year</code></td>
+<td>numeric</td>
+<td><p>Initial year of TANF benefit receipt.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>tanf_end_month</code></td>
+<td>numeric</td>
+<td><p>End month of TANF benefit receipt.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>tanf_coverage_type</code></td>
+<td>character</td>
+<td><p>Type of TANF benefit coverage.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>tanf_owner</code></td>
+<td>numeric</td>
+<td><p>Person number for owner of TANF benefit this month.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>tanf_continue_flag</code></td>
+<td>character</td>
+<td><p>Continuation status of TANF benefit receipt in the last month of the reference period.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>tanf_received_month</code></td>
+<td>numeric</td>
+<td><p>Whether person received TANF benefits this month.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>tanf_received_year</code></td>
+<td>numeric</td>
+<td><p>Whether person received TANF benefits this year.</p>
+<p><strong>Level:</strong> Person-year</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="even">
+<td><code>tanf_amt_received</code></td>
+<td>numeric</td>
+<td><p>Value of the TANF benefits received this month.</p>
+<p><strong>Level:</strong> Person-month</p>
+<p><strong>Source:</strong> <a href="https://www.census.gov/programs-surveys/sipp/data/datasets.html" class="uri">Survey of Income and Program Participation Data</a></p></td>
+</tr>
+<tr class="odd">
+<td><code>party</code></td>
+<td>character</td>
+<td><p>Political party affiliation of state’s governor.</p>
+<p><strong>Level:</strong> State-year</p>
+<p><strong>Source:</strong> <a href="https://en.wikipedia.org/wiki/Category:Lists_of_state_governors_of_the_United_States" class="uri">Wikipedia List of States’ Governors</a></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
