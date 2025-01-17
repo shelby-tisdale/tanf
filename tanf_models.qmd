@@ -4,7 +4,7 @@ author: "Shelby Tisdale"
 format: html
 ---
 
-# Load Data and Packages
+\# Load Data and Packages
 
 ```{r}
 #| label: load-packages
@@ -730,7 +730,19 @@ sipp_all_goals <- sipp_participants |>
     tanf_received_year = if_else(tanf_received_year == 1, 1, 0)
   ) |>
   # edit variable types
-  mutate_at(c('month', 'year', 'fiscal_year', 'state', 'education', 'ethnicity', 'race', 'sex', 'citizenship', 'in_goal1', 'in_goal2', 'in_goal3', 'in_goal4', 'goal1', 'goal2', 'goal3', 'goal4', 'received_job_training', 'hh_married_month', 'tanf_begin_month', 'tanf_initial_year', 'tanf_end_month', 'tanf_coverage_type', 'tanf_owner', 'tanf_continue_flag', 'tanf_received_month', 'tanf_received_year', 'party'), as.factor)
+  mutate_at(
+    c('month', 'year', 'fiscal_year', 'state', 'education', 'ethnicity', 'race',
+      'sex', 'citizenship', 'in_goal1', 'in_goal2', 'in_goal3', 'in_goal4',
+      'goal1', 'goal2', 'goal3', 'goal4', 'received_job_training',
+      'hh_married_month', 'tanf_begin_month', 'tanf_initial_year',
+      'tanf_end_month', 'tanf_coverage_type', 'tanf_owner',
+      'tanf_continue_flag', 'tanf_received_month',
+      'tanf_received_year', 'party'),
+    as.factor) |>
+  mutate_at(
+    c('household_id', 'pnum'), as.character
+  ) |>
+  mutate(tanf_amt_received = if_else(is.na(tanf_amt_received), 0, tanf_amt_received))
 
   
 
@@ -738,27 +750,125 @@ sipp_all_goals <- sipp_participants |>
 # write.csv(sipp_all_goals, "sipp_all_goals.csv")
 ```
 
+```{r}
+#| label: load-complete-dataset
+
+sipp_all_goals <- read_csv("sipp_all_goals.csv")
+
+```
+
 # Goal 1
 
-## Aggregate Dataset
+**Goal 1:** Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.
+
+**Criteria:** This goal is fulfilled for a given household and month if all children in the household have at least one relative in the household.
+
+**Model:** This model will evaluate the impacts of state-level unobligated funds on household-level fulfillment of TANF Goal 1.
+
+## Aggregate Dataset to Household-Year Level
+
+-   Should this be aggregated to the Household-year or Household-month Level?
+
+    -   I'm thinking household year.
+
+-   Should I include poverty status or income as a covariate, given that all individuals in the sample are in poverty? Should I change the sample to include people of different all income levels? My initial thoughts are that since the only people eligible for TANF are families in poverty, this is who we should model for.
+
+    -   What should I control for?
+    -   household level demographics - householder
+
+-   look at how unobligated funds change year to year.
+
+```{r}
+```
 
 ## Table 1
 
 ## EDA
 
 ## Modeling
+
+Let $Y_{ij1}$ denote whether or not household $i$ in state $j$ met the criteria for Goal 1.
+
+$$ Y_{ij1} = \begin{cases} 1 & \text{yes} \\ 0 & \text{no} \end{cases} $$
 
 ## Results
 
 # Goal 2
 
+**Goal 2:** End the dependence of needy parents on government benefits by promoting job preparation, work, and marriage.
+
+**Participant Households:** All households who received government benefits in the earliest year of their participation in the study.
+
+**Criteria:** Goal 2 is fulfilled for a participant household if household members are no longer receiving government benefits by the end of the reference frame. Variables related to job preparation, work, and marriage will be used as predictors.
+
 ## Aggregate Dataset
+
+**Questions:**
+
+-   percent of unobligated funds changes by year, what do I do with that?
+
+```{r}
+sipp_goal2 <- sipp_all_goals |>
+  filter(in_goal2 == 1) |>
+  group_by(household_id, state, year, goal2, pct_unobligated, party) |>
+  summarize(
+    total_tanf = sum(tanf_amt_received, na.rm = TRUE),
+    job_prep = max(received_job_training, na.rm = TRUE)
+    ) |>
+  distinct()
+```
 
 ## Table 1
 
 ## EDA
 
+```{r}
+
+# histogram of goal 2 achievement rate (state-year)
+sipp_goal2 |>
+  group_by(state, year) |>
+  summarize(goal2_rate = mean(goal2)) |>
+  ggplot(aes(x = goal2_rate)) +
+  geom_histogram()
+
+# histogram of goal 2 achievement rate (state only)
+sipp_goal2 |>
+  group_by(state) |>
+  summarize(goal2_rate = mean(goal2)) |>
+  ggplot(aes(x = goal2_rate)) +
+  geom_histogram()
+
+# line graph - goal 2 achievement rate 2017-2021
+# grouped by state
+# there is variation from year-to-year
+sipp_goal2 |>
+  group_by(state, year) |>
+  summarize(goal2_rate = mean(goal2)) |>
+  ggplot(aes(x = year, group = state, y = goal2_rate)) +
+  geom_line(alpha = 0.5)
+
+sipp_goal2 |>
+  group_by(state, year, pct_unobligated, party) |>
+  summarize(goal2_rate = mean(goal2)) |>
+  ggplot(aes(x = pct_unobligated, y = goal2_rate, color = party)) +
+  geom_point()
+```
+
 ## Modeling
+
+Let $Y_{ij2}$ denote whether or not household $i$ in state $j$ met the criteria for Goal 2.
+
+$$
+Y_{ij2} = \begin{cases} 1 & \text{yes} \\ 0 & \text{no} \end{cases}
+$$
+
+$$
+X_{ij1} = \text{whether householder i in state j is married at end of reference frame} \\
+X_{ij2} = \text{whether householder i in state j participated in job preparation} \\
+X_{ij3} = \text{whether householder i in state j is employed at end of reference frame} \\
+X_{ij4} = \text{amount of TANF funds received by household i in state j during reference period} \\
+X_{j1} = \text{percent of unobligated funds for state j}
+$$
 
 ## Results
 
