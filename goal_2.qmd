@@ -56,10 +56,19 @@ hh_years <- all_goals |>
 # create marriage variable
 hh_marriage_yr <- all_goals |>
   select(household_id, state, month, fiscal_year, hh_married_month, in_goal2) |>
-  filter(month == 10 & !is.na(hh_married_month) & in_goal2 == 1) |>
-  distinct() |>
-  rename(hh_married_yr = hh_married_month) |>
-  select(household_id, state, fiscal_year, hh_married_yr)
+  filter(in_goal2 == 1) |>
+  group_by(household_id, state, fiscal_year) |>
+  summarize(hh_marriage_yr = max(hh_married_month, na.rm = TRUE), .groups = "drop") |>
+  
+  pivot_wider(
+    names_from = race
+  )
+
+# demographic controls
+hh_demogs <- all_goals |>
+  filter(is_householder == 1 & in_goal2 == 1) |>
+  select(household_id, state, fiscal_year, race, ethnicity, sex, total_children) |>
+  distinct()
 
 goal2 <- all_goals |>
   # select goal 2 participants
@@ -72,20 +81,20 @@ goal2 <- all_goals |>
   left_join(hh_years, join_by("household_id")) |>
   # calculate total tanf received for each household for each year
   # aggregates data to hh-state-year level
-  group_by(household_id, state, fiscal_year, pct_unobligated, party, received_job_training, goal2, n_years) |>
-  summarize(total_hh_tanf = sum(tanf_amt_received, na.rm = TRUE)) |>
-  ungroup() |>
-  left_join(hh_marriage_yr, join_by("household_id", "state", "fiscal_year"))
-  group_by(state, fiscal_year, pct_unobligated, party) |>
+  group_by(household_id, state, fiscal_year, pct_unobligated, received_job_training, goal2, n_years) |>
+  summarize(total_hh_tanf = sum(tanf_amt_received, na.rm = TRUE), .groups = "drop") |>
+  left_join(hh_marriage_yr, by = c("household_id", "state", "fiscal_year")) |>
+  left_join(hh_demogs, by = c("household_id", "state", "fiscal_year")) |>
+  group_by(state, fiscal_year, pct_unobligated) |>
   summarize(
     pct_goal2 = mean(goal2),
     pct_job_prep = mean(received_job_training),
-    #pct_married = mean(hh_marriage_yr),
+    pct_married = mean(hh_marriage_yr, na.rm = TRUE),
     # revisit mean tanf variable
     mean_hh_tanf = mean(total_hh_tanf),
-    med_n_years = median(n_years)
-    ) |>
-  ungroup()
+    med_n_years = median(n_years),
+    .groups = "drop"
+    )
   
 ```
 
