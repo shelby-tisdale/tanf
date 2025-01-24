@@ -535,7 +535,7 @@ hh_goal4 <- goal4 |>
 
 sipp_all_goals <- sipp_participants |>
   # select necessary variables
-  select(ssuid, pnum, monthcode, year, tage, state, eeduc, eorigin, trace, esex, ecitizen, tceb, erelrpe,
+  select(ssuid, pnum, monthcode, year, tage, state, eeduc, eorigin, trace, esex, ecitizen, tceb, erelrpe, ejb1_scrnr,
   # tanf variables
   etanf_bmonth, rtanf_lcyr, etanf_emonth, etanf_covtyp, etanf_own, rtanf_cflg,
   rtanf_mnyn, rtanf_yryn, ttanf_amt) |>
@@ -628,7 +628,7 @@ sipp_all_goals <- sipp_participants |>
   # state-level predictors
   pct_unobligated, pct_program_mgmt, pct_basic_assistance,
   # individual predictors
-  received_job_training, hh_married_month,
+  received_job_training, hh_married_month, ejb1_scrnr,
   # tanf variables
   etanf_bmonth, rtanf_lcyr, etanf_emonth, etanf_covtyp, etanf_own,
   rtanf_cflg, rtanf_mnyn, rtanf_yryn, ttanf_amt
@@ -701,6 +701,7 @@ sipp_all_goals <- sipp_participants |>
   )) |>
   # rename variables
   rename(
+    employed = ejb1_scrnr,
     household_id = ssuid,
     month = monthcode,
     age = tage,

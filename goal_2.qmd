@@ -46,15 +46,45 @@ all_goals <- read_csv("data/sipp_all_goals.csv")
 ```{r}
 #| label: aggregate-goal-2
 
-goal2 <- sipp_all_goals |>
+# calculate number of years each person is in study
+hh_years <- all_goals |>
+  select(household_id, state, year) |>
+  distinct() |>
+  count(household_id) |>
+  rename(n_years = n)
+
+# create marriage variable
+hh_marriage_yr <- all_goals |>
+  select(household_id, state, month, year, hh_married_month) |>
+  filter(month == 1) |>
+  distinct() |>
+  rename(hh_married_yr = hh_married_month)
+
+goal2 <- all_goals |>
+  # select goal 2 participants
   filter(in_goal2 == 1) |>
+  # relevant variables for goal 2
+  select(household_id, state, fiscal_year, pct_unobligated, party, goal2, received_job_training, tanf_amt_received) |>
+  # change job training variable to numeric
   mutate(received_job_training = if_else(received_job_training == "0", 0, 1)) |>
-  group_by(household_id, state, fiscal_year, goal2, pct_unobligated, party) |>
+  # add variable for number of years household is in study
+  left_join(hh_years, join_by("household_id")) |>
+  left_join(hh_marriage_yr, join_by("household_id", "state", "year"))
+  distinct() |>
+  # calculate total tanf received for each household for each year
+  # aggregates data to hh-state-year level
+  group_by(household_id, state, fiscal_year, pct_unobligated, party, received_job_training, goal2, n_years) |>
+  summarize(total_hh_tanf = sum(tanf_amt_received, na.rm = TRUE)) |>
+  ungroup() |>
+  group_by(state, fiscal_year, pct_unobligated, party) |>
   summarize(
-    total_tanf = sum(tanf_amt_received, na.rm = TRUE),
-    job_prep = max(received_job_training, na.rm = TRUE)
+    pct_goal2 = mean(goal2),
+    pct_job_prep = mean(received_job_training),
+    # revisit mean tanf variable
+    mean_hh_tanf = mean(total_hh_tanf),
+    med_n_years = median(n_years)
     ) |>
-  distinct()
+  ungroup()
 ```
 
 ## Table 1
