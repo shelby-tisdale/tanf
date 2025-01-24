@@ -1,6 +1,35 @@
 ---
-title: "goal_4"
+title: "Goal 4"
+author: "Shelby Tisdale"
 format: html
 editor: visual
 ---
 
+# Load Data and Packages
+
+```{r}
+#| label: load-packages
+library(tidyverse)
+library(data.table)
+library(bit64)
+library(janitor)
+library(gt)
+library(gtsummary)
+```
+
+```{r}
+#| label: load-full-data
+all_goals <- read_csv("data/sipp_all_goals.csv")
+```
+
+# Description
+
+# Aggregate Dataset
+
+# Table 1
+
+# EDA
+
+# Modeling
+
+# Results
