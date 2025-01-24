@@ -1,0 +1,55 @@
+---
+title: "Exploratory Data Analysis and Visualizations"
+author: "Shelby Tisdale"
+format: html
+---
+
+```{r}
+#| label: load-packages
+library(tidyverse)
+library(ggridges)
+```
+
+```{r}
+#| label: load-data
+sipp_all_goals <- read.csv("sipp_all_goals.csv")
+```
+
+```{r}
+sipp_all_goals |>
+  mutate(goal1 = as.factor(goal1)) |>
+  filter(!is.na(goal1) & !is.na(tanf_received_year)) |>
+  select(household_id, pnum, goal1, pct_unobligated, tanf_received_year, year) |>
+  distinct() |>
+  ggplot(aes(x = pct_unobligated, group = goal1, fill = goal1)) +
+  geom_density(alpha = 0.4) +
+  facet_wrap(~tanf_received_year, nrow = 2)
+
+sipp_all_goals |>
+  mutate(goal2 = as.factor(goal2)) |>
+  filter(!is.na(goal2)  & !is.na(tanf_received_year)) |>
+  select(household_id, goal2, tanf_received_year, pct_unobligated, tanf_received_year, year) |>
+  distinct() |>
+  ggplot(aes(x = pct_unobligated, group = goal2, fill = goal2)) +
+  geom_density(alpha = 0.4) +
+  facet_wrap(~tanf_received_year, nrow = 2)
+
+sipp_all_goals |>
+  mutate(goal3 = as.factor(goal3)) |>
+  filter(!is.na(goal3) & !is.na(tanf_received_year)) |>
+  select(household_id, pnum, goal3, pct_unobligated, tanf_received_year, year) |>
+  distinct() |>
+  ggplot(aes(x = pct_unobligated, group = goal3, fill = goal3)) +
+  geom_density(alpha = 0.4) +
+  facet_wrap(~tanf_received_year, nrow = 2)
+
+sipp_all_goals |>
+  mutate(goal4 = as.factor(goal4)) |>
+  filter(!is.na(goal4) & !is.na(tanf_received_year)) |>
+  select(household_id, pnum, goal4, pct_unobligated, tanf_received_year, year) |>
+  distinct() |>
+  ggplot(aes(x = pct_unobligated, group = goal4, fill = goal4)) +
+  geom_density(alpha = 0.4)  +
+  facet_grid(~tanf_received_year)
+```
+
