@@ -757,7 +757,6 @@ sipp_all_goals <- sipp_participants |>
 
 ```{r}
 #| label: load-complete-dataset
-<<<<<<< HEAD
 
 # sipp_all_goals <- read_csv("sipp_all_goals.csv")
 
@@ -946,7 +945,3 @@ Variability between states:
 ## Modeling
 
 ## Results
-=======
-# sipp_all_goals <- read_csv("sipp_all_goals.csv")
-```
->>>>>>> 0b8755b198c764eaba21bb91c4654ba2cdc546ed
