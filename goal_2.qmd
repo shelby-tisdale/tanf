@@ -15,6 +15,9 @@ library(bit64)
 library(janitor)
 library(gt)
 library(gtsummary)
+library(rstanarm)
+library(bayesplot)
+library(tidybayes)
 ```
 
 ```{r}
@@ -32,17 +35,6 @@ all_goals <- read_csv("data/sipp_all_goals.csv")
 
 ## Aggregate Dataset
 
-**Questions:**
-
--   percent of unobligated funds changes by year, what do I do with that?
--   maybe instead of a binary outcome, we could create a type of "**success rate**" variable that could be modeled, the average for each household over the years.
--   To disregard the longitudianl component of the data, we are making a simplifying assumption that the percent of unobligated funds in one year is independent of the the percent in another year (for the same state) - each state-year combo is a separate group in the hierarchy. According to the visualization below, that kind of independence doesn't seem to be the case.
--   We could use year as a separate grouping variable OR use a state-year grouping structure?
-    -   changing success rate to outcome?
--   Should my total TANF variable be some kind of ratio of total tanf received to number of years in the study?
-    -   average tanf per year
--   **Note:** include variable for time participating in study
-
 ```{r}
 #| label: aggregate-goal-2
 
@@ -55,14 +47,14 @@ hh_years <- all_goals |>
 
 # create marriage variable
 hh_marriage_yr <- all_goals |>
-  select(household_id, state, month, fiscal_year, hh_married_month, in_goal2) |>
+  filter(is_householder == 1) |>
+  mutate(employed = if_else(employed == 1, 1, 0)) |>
+  select(household_id, state, month, fiscal_year, hh_married_month, in_goal2, employed) |>
   filter(in_goal2 == 1) |>
   group_by(household_id, state, fiscal_year) |>
-  summarize(hh_marriage_yr = max(hh_married_month, na.rm = TRUE), .groups = "drop") |>
-  
-  pivot_wider(
-    names_from = race
-  )
+  summarize(hh_marriage_yr = max(hh_married_month, na.rm = TRUE),
+            hh_employed_yr = max(employed, na.rm = TRUE),
+                                 .groups = "drop")
 
 # demographic controls
 hh_demogs <- all_goals |>
@@ -74,7 +66,7 @@ goal2 <- all_goals |>
   # select goal 2 participants
   filter(in_goal2 == 1) |>
   # relevant variables for goal 2
-  select(household_id, state, fiscal_year, pct_unobligated, party, goal2, received_job_training, tanf_amt_received) |>
+  select(household_id, state, fiscal_year, pct_unobligated, goal2, received_job_training, tanf_amt_received) |>
   # change job training variable to numeric
   mutate(received_job_training = if_else(received_job_training == "0", 0, 1)) |>
   # add variable for number of years household is in study
@@ -84,18 +76,24 @@ goal2 <- all_goals |>
   group_by(household_id, state, fiscal_year, pct_unobligated, received_job_training, goal2, n_years) |>
   summarize(total_hh_tanf = sum(tanf_amt_received, na.rm = TRUE), .groups = "drop") |>
   left_join(hh_marriage_yr, by = c("household_id", "state", "fiscal_year")) |>
-  left_join(hh_demogs, by = c("household_id", "state", "fiscal_year")) |>
+  # left_join(hh_demogs, by = c("household_id", "state", "fiscal_year")) |>
   group_by(state, fiscal_year, pct_unobligated) |>
   summarize(
     pct_goal2 = mean(goal2),
     pct_job_prep = mean(received_job_training),
     pct_married = mean(hh_marriage_yr, na.rm = TRUE),
+    pct_employed = mean(hh_employed_yr, na.rm = TRUE),
     # revisit mean tanf variable
     mean_hh_tanf = mean(total_hh_tanf),
     med_n_years = median(n_years),
     .groups = "drop"
+    ) |>
+  mutate(
+    pct_unobligated = pct_unobligated*100,
+    pct_goal2 = pct_goal2*100,
+    pct_job_prep = pct_job_prep*100,
+    pct_married = pct_married*100
     )
-  
 ```
 
 ## Table 1
@@ -152,30 +150,126 @@ sipp_goal2 |>
   geom_point()
 ```
 
-## Modeling
+# Modeling
 
-Let $Y_{ij2}$ denote whether or not household $i$ in state $j$ met the criteria for Goal 2.
+## Varying intercepts model - success rate
 
-$$ Y_{ij2} = \begin{cases} 1 & \text{yes} \\ 0 & \text{no} \end{cases} $$
+### Layer 1: Variability within state
+
+Let $Y_{ij2}$ denote the percent achievement of Goal 2 for year $i$ in state $j$.
+
+$$ Y_{ij2} |\beta_{0j}, \beta_1, \beta_2, \beta_3, \beta_4, \beta_5, \sigma_y^2 \ \sim N(\mu_{ij}, \sigma^2_y) \text{ where } \mu_{ij} = \beta_{0j} + \beta_1X_{ij1} + \beta_2X_{ij2} + \beta_3X_{ij3} + \beta_4{X_ij4} + \beta_5X_{ij5} $$
+
+where
 
 $$ X_{ij1} = \text{whether householder i in state j is married at end of reference frame} \\ X_{ij2} = \text{whether householder i in state j participated in job preparation} \\ X_{ij3} = \text{whether householder i in state j is employed at end of reference frame} \\ X_{ij4} = \text{amount of TANF funds received by household i in state j during reference period} \\ X_{j5} = \text{percent of unobligated funds for state j} $$
 
-Let $\pi_{ij}$ be the probability that household $i$ fulfills Goal 2. Then, $Y_{ij2}|\pi_{ij} \sim \text{Bern}(\pi_{ij})$.
+**group-specific parameters:**
 
-We are using a **random intercepts logistic regression model.**
+-   $\beta_{0j} = \text{intercept of the regression model for state j}$
 
-Model within state j:
+**global-parameters:**
 
-$$ Y_{ij2}|\beta_{0j}, \beta_1, \beta_2, \beta_3, \beta_4, \beta_5 \sim \text{Bern}(\pi_{ij}) \\ \text{ with } \log(\frac{\pi_{ij}}{1-\pi_{ij}}) = \beta_{0j} +  \beta_1X_{ij1} + \beta_2X_{ij2} + \beta_3X_{ij3} + \beta_4X_{ij4} + \beta_5X_j $$
+-   $\beta_1,..., \beta_5$: global coefficents
 
-Variability between states:
+-   $\sigma^2_y$ = within-state variability around the mean regression model (measure of the strength of the relationship between state-year level percent goal achievement and predictors)
 
-**Assumptions**
+### Layer 2: Variability within year
 
--   The state-specific intercepts $B_{0j}$ describe the underlying achievement rates, as measured by the log odds of goal achievement for each state $j$. These acknowledge that some states have higher rates of goal achievement than others.
+$$
+\beta_{0j} | \beta_0, \sigma_0 \text{ iid }\sim N(\beta_0, \sigma^2_0)
+$$
 
--   The state-specific intercepts $B_{0j}$ are assumed to be Normally distributed around some global intercept $\beta_0$ with standard deviation $\sigma_0$. Thus, $\beta_0$ describes the typical baseline success rate across all expeditions and $\sigma_0$ captures the **between-group variability** in success rates from state to state.
+where:
 
--   $\beta_1$ describes the **global** relationship between achievement and householder marriage when controlling for all other variables in the model.
+-   $\beta_0$ = **global average intercept** across all states (average state's baseline success rate)
 
-## Results
+-   $\sigma_0$ = **between-group variability** in intercepts $\beta_{0j}$ (extent to which baseline success rate varies from state to state.
+
+### Layer 3: Global Priors
+
+Regression model within state $j$:
+
+$$ Y_{ij2} |\beta_{0j}, \beta_1, \beta_2, \beta_3, \beta_4, \beta_5, \sigma_y^2 \ \sim N(\mu_{ij}, \sigma^2_y) \text{ where } \mu_{ij} = \beta_{0j} + \beta_1X_{ij1} + \beta_2X_{ij2} + \beta_3X_{ij3} + \beta_4{X_ij4} + \beta_5X_{ij5} $$
+
+Variability in baseline success rate between states:
+
+$$
+\beta_{0j} | \beta_0, \sigma_0 \text{ iid }\sim N(\beta_0, \sigma^2_0)
+$$
+
+Priors on global parameters:
+
+$$\beta_{0c} \sim N(m_0, s^2_0)$$
+
+$$\beta_{0c} \sim N(m_0, s^2_0)$$
+
+$$\beta_{1} \sim N(m_1, s^2_1)$$
+
+$$\beta_{2} \sim N(m_2, s^2_2)$$
+
+$$\beta_{3} \sim N(m_3, s^2_3)$$
+
+$$\beta_{4} \sim N(m_2, s^2_4)$$
+
+$$\beta_{5} \sim N(m_5, s^2_5)$$
+
+$$
+\sigma_y \sim \text{Exp}(l_y)
+$$
+$$
+\sigma_0 \sim \text{Exp}(l_0)
+$$
+
+## Tuning the prior
+
+-   Percent goal 2 success for each state averages about 0.28 with a standard deviation of 0.21. Prior model for $\beta_{0c}$: $\beta_{0c} \sim N(0.28, 0.21^2)$
+
+-   we think goal 2 success will increase when more householders are married. $\beta_1 \sim N(1,1)$
+
+-   we think goal 2 success will increase when more householders participate in job preparation. $\beta_2 \sim N(1,1)$
+
+-   we think goal 2 success will increase when more householders are employed. $\beta_3 \sim N(1,1)$
+
+-   we think goal 2 success will increase with higher TANF fund receipt. $\beta_4 \sim N(1,1)$
+
+-   Logically, we think goal 2 success will decrease when unobligated funds increase. (not sure how much) $\beta_5 \sim N(-1, 1^2)$
+
+-   we'll use weakly informative priors for standard deviation parameters
+
+    ```{r}
+    #| label: goal-2-tune-priors
+
+    goal_2_model_1_prior <- stan_glmer(
+      pct_goal2 ~ pct_unobligated + (1 | state),
+      data = goal2, family = gaussian,
+      prior_intercept = normal(28, 21),
+      prior = normal(1, 2),
+      prior_aux = exponential(1, autoscale = TRUE), 
+      prior_covariance = decov(reg = 1, conc = 1, shape = 1, scale = 1),
+      chains = 10, iter = 10000, seed = 84735,
+      prior_PD = TRUE
+    )
+
+    ```
+
+```{r}
+set.seed(84735)
+
+goal2 <- goal2 |> na.omit()
+
+# simulate 100 datasets of goal outcomes from prior
+goal2 |>
+  add_predicted_draws(goal_2_model_1_prior, n = 100) %>%
+  ggplot(aes(x = pct_goal2)) +
+    geom_density(aes(x = .prediction, group = .draw)) +
+  xlim(c(-50, 150))
+
+# why does this look like varying slopes??
+goal2 %>% 
+  add_fitted_draws(goal_2_model_1_prior, n = 4) %>%
+  ggplot(aes(x = pct_unobligated, y = pct_goal2)) +
+    geom_line(aes(y = .value, group = paste(state, .draw))) + 
+    facet_wrap(~ .draw)
+
+```
