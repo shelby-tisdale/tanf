@@ -1,0 +1,55 @@
+---
+title: "Goal 1"
+author: "Shelby Tisdale"
+format: html
+editor: visual
+---
+
+# Load Data and Packages
+
+```{r}
+#| label: load-packages
+
+library(tidyverse)
+library(data.table)
+library(bit64)
+library(janitor)
+library(gt)
+library(gtsummary)
+```
+
+```{r}
+#| label: load-full-data
+all_goals <- read_csv("data/sipp_all_goals.csv")
+```
+
+# Goal 1
+
+**Goal 1:** Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.
+
+**Criteria:** This goal is fulfilled for a given household and month if all children in the household have at least one relative in the household.
+
+**Model:** This model will evaluate the impacts of state-level unobligated funds on household-level fulfillment of TANF Goal 1.
+
+## Aggregate Dataset to Household-Year Level
+
+-   Should this be aggregated to the Household-year or Household-month Level?
+
+    -   I'm thinking household year.
+
+-   Should I include poverty status or income as a covariate, given that all individuals in the sample are in poverty? Should I change the sample to include people of different all income levels? My initial thoughts are that since the only people eligible for TANF are families in poverty, this is who we should model for.
+
+    -   What should I control for?
+    -   household level demographics - householder
+
+-   look at how unobligated funds change year to year
+
+## Table 1
+
+## EDA
+
+## Modeling
+
+Let $Y_{ij1}$ denote whether or not household $i$ in state $j$ met the criteria for Goal 1.
+
+$$ Y_{ij1} = \begin{cases} 1 & \text{yes} \\ 0 & \text{no} \end{cases} $$

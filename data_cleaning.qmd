@@ -757,7 +757,7 @@ sipp_all_goals <- sipp_participants |>
 ```{r}
 #| label: load-complete-dataset
 
-sipp_all_goals <- read_csv("sipp_all_goals.csv")
+# sipp_all_goals <- read_csv("sipp_all_goals.csv")
 
 ```
 
@@ -810,10 +810,13 @@ $$ Y_{ij1} = \begin{cases} 1 & \text{yes} \\ 0 & \text{no} \end{cases} $$
 **Questions:**
 
 -   percent of unobligated funds changes by year, what do I do with that?
--   maybe instead of a binary outcome, we could create a type of "success rate" variable that could be modeled, the average for each household over the years.
+-   maybe instead of a binary outcome, we could create a type of "**success rate**" variable that could be modeled, the average for each household over the years.
 -   To disregard the longitudianl component of the data, we are making a simplifying assumption that the percent of unobligated funds in one year is independent of the the percent in another year (for the same state) - each state-year combo is a separate group in the hierarchy. According to the visualization below, that kind of independence doesn't seem to be the case.
 -   We could use year as a separate grouping variable OR use a state-year grouping structure?
+    -   changing success rate to outcome?
 -   Should my total TANF variable be some kind of ratio of total tanf received to number of years in the study?
+    -   average tanf per year
+-   **Note:** include variable for time participating in study
 
 ```{r}
 sipp_goal2 <- sipp_all_goals |>
@@ -840,7 +843,7 @@ sipp_goal2 |>
   summarize(goal2_rate = mean(goal2)) |>
   ggplot(aes(x = goal2_rate)) +
   geom_histogram() +
-  labs(x = "goal 2 success rate by state",
+  labs(x = "goal 2 success rate by state and year",
        y = "Count")
 
 # histogram of goal 2 achievement rate (state only)
@@ -850,7 +853,7 @@ sipp_goal2 |>
   summarize(goal2_rate = mean(goal2)) |>
   ggplot(aes(x = goal2_rate)) +
   geom_histogram() +
-  labs(x = "goal 2 success rate by state and year",
+  labs(x = "goal 2 success rate by state",
        y = "Count")
 
 # line graph - percent unobligated funds 2017-2021
