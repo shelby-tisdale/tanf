@@ -18,11 +18,12 @@ library(gtsummary)
 library(rstanarm)
 library(bayesplot)
 library(tidybayes)
+library(broom.mixed)
 ```
 
 ```{r}
 #| label: load-full-data
-all_goals <- read_csv("data/sipp_all_goals.csv")
+all_goals <- read_csv("sipp_all_goals.csv")
 ```
 
 # Description
@@ -48,13 +49,13 @@ hh_years <- all_goals |>
 # create marriage variable
 hh_marriage_yr <- all_goals |>
   filter(is_householder == 1) |>
-  mutate(employed = if_else(employed == 1, 1, 0)) |>
+  #mutate(employed = if_else(employed == 1, 1, 0)) |>
   select(household_id, state, month, fiscal_year, hh_married_month, in_goal2, employed) |>
   filter(in_goal2 == 1) |>
   group_by(household_id, state, fiscal_year) |>
   summarize(hh_marriage_yr = max(hh_married_month, na.rm = TRUE),
             hh_employed_yr = max(employed, na.rm = TRUE),
-                                 .groups = "drop")
+            .groups = "drop")
 
 # demographic controls
 hh_demogs <- all_goals |>
@@ -82,7 +83,7 @@ goal2 <- all_goals |>
     pct_goal2 = mean(goal2),
     pct_job_prep = mean(received_job_training),
     pct_married = mean(hh_marriage_yr, na.rm = TRUE),
-    pct_employed = mean(hh_employed_yr, na.rm = TRUE),
+    #pct_employed = mean(hh_employed_yr, na.rm = TRUE),
     # revisit mean tanf variable
     mean_hh_tanf = mean(total_hh_tanf),
     med_n_years = median(n_years),
@@ -104,20 +105,20 @@ goal2 <- all_goals |>
 #| label: eda-goal-2
 
 # histogram of goal 2 achievement rate (state-year)
-sipp_goal2 |>
-  mutate(goal2 = if_else(goal2 == "1", 1, 0)) |>
-  group_by(state, fiscal_year) |>
-  summarize(goal2_rate = mean(goal2)) |>
-  ggplot(aes(x = goal2_rate)) +
+goal2 |>
+  #mutate(goal2 = if_else(goal2 == "1", 1, 0)) |>
+  #group_by(state, fiscal_year) |>
+  #summarize(goal2_rate = mean(goal2)) |>
+  ggplot(aes(x = pct_goal2)) +
   geom_histogram() +
   labs(x = "goal 2 success rate by state and year",
        y = "Count")
 
 # histogram of goal 2 achievement rate (state only)
-sipp_goal2 |>
-  mutate(goal2 = if_else(goal2 == "1", 1, 0)) |>
+goal2 |>
+  #mutate(goal2 = if_else(goal2 == "1", 1, 0)) |>
   group_by(state) |>
-  summarize(goal2_rate = mean(goal2)) |>
+  summarize(goal2_rate = mean(pct_goal2)) |>
   ggplot(aes(x = goal2_rate)) +
   geom_histogram() +
   labs(x = "goal 2 success rate by state",
@@ -216,14 +217,13 @@ $$\beta_{5} \sim N(m_5, s^2_5)$$
 
 $$
 \sigma_y \sim \text{Exp}(l_y)
-$$
-$$
+$$ $$
 \sigma_0 \sim \text{Exp}(l_0)
 $$
 
 ## Tuning the prior
 
--   Percent goal 2 success for each state averages about 0.28 with a standard deviation of 0.21. Prior model for $\beta_{0c}$: $\beta_{0c} \sim N(0.28, 0.21^2)$
+-   Percent goal 2 success for each state averages about 28 with a standard deviation of 21. Prior model for $\beta_{0c}$: $\beta_{0c} \sim N(0.28, 0.21^2)$
 
 -   we think goal 2 success will increase when more householders are married. $\beta_1 \sim N(1,1)$
 
@@ -241,16 +241,17 @@ $$
     #| label: goal-2-tune-priors
 
     goal_2_model_1_prior <- stan_glmer(
-      pct_goal2 ~ pct_unobligated + (1 | state),
+      pct_goal2 ~ pct_unobligated +  pct_job_prep + pct_married + mean_hh_tanf + med_n_years + (1 | state),
       data = goal2, family = gaussian,
-      prior_intercept = normal(28, 21),
-      prior = normal(1, 2),
+      prior_intercept = normal(28, 25),
+      prior = normal(1, 25),
       prior_aux = exponential(1, autoscale = TRUE), 
       prior_covariance = decov(reg = 1, conc = 1, shape = 1, scale = 1),
-      chains = 10, iter = 10000, seed = 84735,
+      chains = 4, iter = 10000, seed = 84735,
       prior_PD = TRUE
     )
 
+    goal_2_model_1_prior
     ```
 
 ```{r}
@@ -260,16 +261,81 @@ goal2 <- goal2 |> na.omit()
 
 # simulate 100 datasets of goal outcomes from prior
 goal2 |>
-  add_predicted_draws(goal_2_model_1_prior, n = 100) %>%
+  add_predicted_draws(goal_2_model_1_prior, ndraws = 100) %>%
   ggplot(aes(x = pct_goal2)) +
     geom_density(aes(x = .prediction, group = .draw)) +
   xlim(c(-50, 150))
 
 # why does this look like varying slopes??
-goal2 %>% 
+goal2 |> 
   add_fitted_draws(goal_2_model_1_prior, n = 4) %>%
   ggplot(aes(x = pct_unobligated, y = pct_goal2)) +
     geom_line(aes(y = .value, group = paste(state, .draw))) + 
     facet_wrap(~ .draw)
 
+ggplot(goal2, aes(x = pct_unobligated, y = pct_goal2)) +
+  geom_point() +
+  facet_wrap(~state)
+```
+
+```{r}
+
+goal_2_model_1 <- update(goal_2_model_1_prior, prior_PD = FALSE)
+
+prior_summary(goal_2_model_1_prior)
+
+# Markov chain diagnostics
+mcmc_trace(goal_2_model_1)
+mcmc_dens_overlay(goal_2_model_1)
+mcmc_acf(goal_2_model_1)
+neff_ratio(goal_2_model_1)
+rhat(goal_2_model_1)
+
+
+goal2_model1_summary <- tidy(goal_2_model_1, effects = "fixed", conf.int = TRUE, conf.level = .95)
+goal2_model1_summary
+```
+
+\***Note:** don't do a varying slopes model
+
+check literature for priors - check policy goals.
+
+# Building the 3-level model
+
+```{r}
+goal2 <- all_goals |>
+  # select goal 2 participants
+  filter(in_goal2 == 1) |>
+  # relevant variables for goal 2
+  select(household_id, state, fiscal_year, pct_unobligated, goal2, received_job_training, tanf_amt_received) |>
+  # change job training variable to numeric
+  mutate(received_job_training = if_else(received_job_training == "0", 0, 1)) |>
+  # add variable for number of years household is in study
+  left_join(hh_years, join_by("household_id")) |>
+  # calculate total tanf received for each household for each year
+  # aggregates data to hh-state-year level
+  group_by(household_id, state, fiscal_year, pct_unobligated, received_job_training, goal2, n_years) |>
+  summarize(total_hh_tanf = sum(tanf_amt_received, na.rm = TRUE), .groups = "drop") |>
+  left_join(hh_marriage_yr, by = c("household_id", "state", "fiscal_year")) |>
+  # add covid indicator 
+  mutate(is_covid = if_else(fiscal_year >= 2020, 1, 0))
+
+goal2 |>
+  group_by(state) |>
+  summarize(p_goal2 = mean(goal2)) |>
+  ggplot(aes(x = p_goal2)) +
+  geom_histogram()
+
+```
+
+```{r}
+
+# tune prior
+goal_2_model_2_prior <- stan_glmer(
+  goal2 ~ pct_unobligated + received_job_training + total_hh_tanf + n_years + total_hh_tanf + hh_marriage_yr + hh_employed_yr + is_covid + (1 | fiscal_year) + (1 | state),
+  data = goal2, family = binomial,
+  prior_intercept = normal(-1.05, 1.5, autoscale = TRUE),
+  prior = normal(0, 2.5, autoscale = TRUE),
+  prior_covariance = decov(reg = 1, conc = 1, shape = 1, scale = 1),
+  chain = 1, iter = 1, seed = 12345)
 ```
