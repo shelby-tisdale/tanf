@@ -622,7 +622,7 @@ sipp_all_goals <- sipp_participants |>
   # id variables
   ssuid, pnum, monthcode, year, fiscal_year,
   # demographics
-  tage, state, education, ethnicity, race, sex, citizenship, tceb, erelrpe,
+  tage, state, education, ethnicity, race, sex, citizenship, tceb, erelrpe, 
   # goal fulfillment indicators
   in_goal1, in_goal2, in_goal3, in_goal4, goal1, goal2, goal3, goal4,
   # state-level predictors
@@ -752,7 +752,7 @@ sipp_all_goals <- sipp_participants |>
   
 
 # save data 
- write.csv(sipp_all_goals, "sipp_all_goals.csv")
+ write.csv(sipp_all_goals, "data/sipp_all_goals.csv")
 ```
 
 ```{r}
