@@ -15,6 +15,13 @@ library(bit64)
 library(janitor)
 library(gt)
 library(gtsummary)
+library(rstanarm)
+library(tidymodels)
+library(bayesplot)
+library(tidybayes)
+library(tidymodels)
+library(bayesrules)
+library(broom.mixed)
 ```
 
 ```{r}
@@ -49,14 +56,27 @@ hh_demogs <- all_goals |>
   mutate(first_year = min(fiscal_year)) |>
   filter(fiscal_year == first_year) |>
   select(household_id, state, race, sex) |>
-  distinct()
+  distinct() |>
+  mutate(
+    race = factor(race),
+    race = fct_collapse(
+      race,
+      "White" = c("White"),
+      "Black" = c("Black", "Black-AIAN", "White-Black"),
+      "AIAN" = c("AIAN", "White-AIAN"),
+      "Asian" = c("Asian", "White-Asian"),
+      "Other" = c("Other", "HP")
+    ),
+   race = fct_relevel(race, c("White", "Black", "Asian", "AIAN", "Other"))
+  )
 
 goal4 <- all_goals |>
   filter(in_goal4 == 1) |>
-  select(goal4, household_id, fiscal_year, state, pct_unobligated, pct_basic_assistance, tanf_amt_received) |>
+  select(goal4, household_id, fiscal_year, state, pct_unobligated, pct_basic_assistance, pct_fatherhood_programs, tanf_amt_received, party) |>
   group_by(household_id, state, goal4) |>
   mutate(
-    tanf_amt_received = sum(tanf_amt_received)) |>
+    # tanf amt received is for 1000s of dollars
+    tanf_amt_received = sum(tanf_amt_received)/1000) |>
   filter(fiscal_year == min(fiscal_year)) |>
   ungroup() |>
   distinct() |>
@@ -64,9 +84,11 @@ goal4 <- all_goals |>
   left_join(hh_demogs, by = c("household_id", "state")) |>
   mutate(
     pct_unobligated = pct_unobligated*100,
-         pct_basic_assistance = pct_basic_assistance*100
+    pct_basic_assistance = pct_basic_assistance*100,
+    pct_fatherhood_programs = pct_fatherhood_programs*100
   )
 
+saveRDS(goal4, "data/goal4.rds")
 ```
 
 # Table 1
@@ -84,7 +106,7 @@ goal4_test <- testing(goal4_split)
 
 # tune prior
 goal_4_model_1_prior <- stan_glmer(
-  goal4 ~ pct_unobligated + pct_basic_assistance + n_years + race + sex + tanf_amt_received + (1 | fiscal_year) + (1 | state),
+  goal4 ~ pct_unobligated + pct_basic_assistance + pct_fatherhood_programs + party + n_years + race + sex + tanf_amt_received + (1 | fiscal_year) + (1 | state),
   data = goal4_train, family = binomial,
   prior_intercept = normal(0, 2.5, autoscale = TRUE),
   prior = normal(0, 2.5, autoscale = TRUE),
@@ -98,14 +120,15 @@ tidy(goal_4_model_1_prior)
 
 # model results
 goal_4_model_1 <- update(goal_4_model_1_prior, prior_PD = FALSE)
-goal_4_model_1_summary <- tidy(goal_4_model_1, effects = "fixed", conf.int = TRUE, conf.level = .95)
-goal_4_model_1_summary |>
+goal_4_model_1_summary <- tidy(goal_4_model_1, effects = "fixed", conf.int = TRUE, conf.level = .80)
+goal_4_model_1_summary <- goal_4_model_1_summary |>
   mutate(odd_ratio = exp(estimate),
          conf.low_or = exp(conf.low),
          conf.high_or = exp(conf.high)) |>
   select(term, odd_ratio, conf.low_or, conf.high_or)
 
 saveRDS(goal_4_model_1, "data/goal_4_model_1.rds")
+goal_4_model_1 <- readRDS("data/goal_4_model_1.rds")
 params <- get_variables(goal_4_model_1)
 
 # model diagnostics
@@ -125,6 +148,29 @@ neff_ratio(goal_4_model_1)
 rhat(goal_4_model_1)
 prop_goal4 <- function(x){mean(x == 1)}
 pp_check(goal_4_model_1, nreps = 100, plotfun = "stat", stat = "prop_goal3")
+
+# classify with testing data
+# posterior predictive models
+goal4_pred1 <- posterior_predict(goal_4_model_1, newdata = drop_na(goal4_test))
+goal4_classifications <- goal4_test |>
+  drop_na() |>
+  mutate(goal4_prob = colMeans(goal4_pred1),
+         goal4_class_1 = as.numeric(goal4_prob >= 0.5)) |>
+  select(goal4_prob, goal4_class_1, goal4)
+
+# confusion matrix
+goal4_classifications |>
+  tabyl(goal4, goal4_class_1) |>
+  adorn_totals(c("row", "col"))
+
+goal4_class_summary <- classification_summary(
+  model = goal_4_model_1, data = goal4_test |> drop_na(), cutoff = 0.5)
+
+# specificity: of the households that do not meet goal4, model correctly classifies __ percent.
+# sensitivity: of the households that do meet goal4, model correctly classifies __ percent.
+# a total 68 percent of households are correctly classified by this model.
+goal4_class_summary$confusion_matrix
+goal4_class_summary$accuracy_rates
 ```
 
 # Results

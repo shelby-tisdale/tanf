@@ -19,12 +19,13 @@ library(rstanarm)
 library(bayesplot)
 library(tidybayes)
 library(tidymodels)
+library(bayesrules)
 library(broom.mixed)
 ```
 
 ```{r}
 #| label: load-full-data
-all_goals <- read_csv("sipp_all_goals.csv")
+all_goals <- read_csv("data/sipp_all_goals.csv")
 ```
 
 # Description
@@ -39,6 +40,8 @@ all_goals <- read_csv("sipp_all_goals.csv")
 
 ```{r}
 #| label: aggregate-goal-2
+
+## add demographic controls
 
 # calculate number of years each person is in study
 hh_years <- all_goals |>
@@ -328,6 +331,7 @@ goal2 |>
 goal_2_model_2_prior <- stan_glmer(
   goal2 ~ pct_unobligated + pct_basic_assistance + received_job_training + total_hh_tanf + n_years + total_hh_tanf + hh_marriage_yr + hh_employed_yr + is_covid + (1 | fiscal_year) + (1 | state),
   data = goal2, family = binomial,
+  # ln(1 -.74 /.74)
   prior_intercept = normal(-1.05, 1.5, autoscale = TRUE),
   prior = normal(0, 2.5, autoscale = TRUE),
   prior_covariance = decov(reg = 1, conc = 1, shape = 1, scale = 1),
@@ -410,6 +414,9 @@ goal2 <- all_goals |>
 ```{r}
 #| label: build-cohort-model
 
+# NOTE: ADD FINANCIAL DATA FOR JOB TRAINING
+# try interaction between employed and job training
+
 set.seed(812)
 
 goal2_split <- initial_split(goal2)
@@ -433,13 +440,14 @@ tidy(goal_2_model_3_prior)
 # model results
 goal_2_model_3 <- update(goal_2_model_3_prior, prior_PD = FALSE)
 goal2_model3_summary <- tidy(goal_2_model_3, effects = "fixed", conf.int = TRUE, conf.level = .95)
-goal2_model3_summary |>
+goal2_model3_summary_or <- goal2_model3_summary |>
   mutate(odd_ratio = exp(estimate),
          conf.low_or = exp(conf.low),
          conf.high_or = exp(conf.high)) |>
   select(term, odd_ratio, conf.low_or, conf.high_or)
 
 saveRDS(goal_2_model_3, "data/goal2_model3.rds")
+goal_2_model_3 <- readRDS("data/goal2_model3.rds")
 params <- get_variables(goal_2_model_3)
 
 # model diagnostics
@@ -459,4 +467,186 @@ neff_ratio(goal_2_model_3)
 rhat(goal_2_model_3)
 prop_goal3 <- function(x){mean(x == 1)}
 pp_check(goal_2_model_3, nreps = 100, plotfun = "stat", stat = "prop_goal3")
+
+# classify with testing data
+# posterior predictive models
+goal2_pred1 <- posterior_predict(goal_2_model_3, newdata = drop_na(goal2_test))
+goal2_classifications <- goal2_test |>
+  drop_na() |>
+  mutate(goal2_prob = colMeans(goal2_pred1),
+         goal2_class_1 = as.numeric(goal2_prob >= 0.5)) |>
+  select(goal2_prob, goal2_class_1, goal2)
+
+# confusion matrix
+goal2_classifications |>
+  tabyl(goal2, goal2_class_1) |>
+  adorn_totals(c("row", "col"))
+
+goal2_class_summary <- classification_summary(
+  model = goal_2_model_3, data = goal2_test |> drop_na(), cutoff = 0.3)
+
+# specificity: of the households that do not meet goal4, model correctly classifies 81 percent.
+# sensitivity: of the households that do meet goal4, model correctly classifies 55 percent.
+# a total 68 percent of households are correctly classified by this model.
+goal2_class_summary$confusion_matrix
+goal2_class_summary$accuracy_rates
 ```
+
+## Revised cohort design model with interaction effect
+
+Added percent state spends on work ed with interaction effect for job training and employment status
+
+```{r}
+# calculate number of years each hh is in study
+hh_years <- all_goals |>
+  select(household_id, state, year) |>
+  distinct() |>
+  count(household_id) |>
+  rename(n_years = n)
+
+# create marriage and employment variables
+hh_vars <- all_goals |>
+  filter(is_householder == 1) |>
+  mutate(employed = if_else(employed == 1, 1, 0)) |>
+  select(household_id, state, month, fiscal_year, hh_married_month, in_goal2, employed) |>
+  filter(in_goal2 == 1) |>
+  group_by(household_id, state) |>
+  summarize(
+    hh_marriage = max(hh_married_month, na.rm = TRUE),
+    hh_employed = max(employed, na.rm = TRUE), .groups = "drop")
+
+# create race and sex of householder variables
+hh_demogs <- all_goals |>
+  filter(is_householder == 1) |>
+  filter(in_goal2 == 1) |>
+  group_by(household_id, state) |>
+  mutate(first_year = min(fiscal_year)) |>
+  filter(fiscal_year == first_year) |>
+  select(household_id, state, race, ethnicity, tanf_received_year) |>
+  distinct() |>
+  mutate(
+    race = factor(race),
+    race = fct_collapse(
+      race,
+      "White" = c("White"),
+      "Black" = c("Black", "Black-AIAN", "White-Black"),
+      "AIAN" = c("AIAN", "White-AIAN"),
+      "Asian" = c("Asian", "White-Asian"),
+      "Other" = c("Other", "HP")
+    ),
+    race = fct_relevel(race, c("White", "Black", "Asian", "AIAN", "Other"))
+  )
+
+goal2 <- all_goals |>
+  # selects all households in goal 2 universe
+  filter(in_goal2 == 1) |>
+  # select relevant variables
+  select(household_id, state, fiscal_year, pct_unobligated, pct_basic_assistance, goal2, pct_work_ed, received_job_training, party, tanf_received_year) |>
+  group_by(household_id, state, goal2) |>
+  # summary variables
+  mutate(
+    # whether hh received job training during time in study
+    received_job_training = max(received_job_training),
+    # amount of tanf received during time in study
+    tanf_received = max(tanf_received_year, na.rm = TRUE)) |>
+  select(-tanf_received_year) |>
+  # pct_unobligated and party are for year 1
+  filter(fiscal_year == min(fiscal_year)) |>
+  ungroup() |>
+  distinct() |>
+  left_join(hh_years, by = "household_id") |>
+  left_join(hh_vars, by = c("household_id", "state")) |>
+  left_join(hh_demogs, by = c("household_id", "state")) |>
+  mutate(pct_unobligated = pct_unobligated*100,
+         pct_basic_assistance = pct_basic_assistance*100,
+         pct_work_ed = pct_work_ed*100,
+         is_covid = if_else(fiscal_year >= 2020, 1, 0))
+
+saveRDS(goal2, "data/goal2.rds")
+```
+
+```{r}
+set.seed(812)
+
+goal2_split <- initial_split(goal2)
+goal2_train <- training(goal2_split)
+goal2_test <- testing(goal2_split)
+
+# tune prior
+goal_2_model_4_prior <- stan_glmer(
+  goal2 ~ pct_unobligated + pct_basic_assistance + pct_work_ed + received_job_training*hh_employed +
+    tanf_received + n_years + hh_marriage + hh_employed + is_covid +  party + race + ethnicity + (1 | fiscal_year) + (1 | state),
+  data = goal2_train, family = binomial,
+    # ln(1 -.74 /.74)
+  prior_intercept = normal(-1.05, 1.5, autoscale = TRUE),
+  prior = normal(0, 2.5, autoscale = TRUE),
+  prior_covariance = decov(reg = 1, conc = 1, shape = 1, scale = 1),
+  chain = 10, iter = 10000, seed = 12345,
+  prior_PD = TRUE)
+
+
+# summarize prior
+prior_summary(goal_2_model_4_prior)
+tidy(goal_2_model_4_prior)
+
+# model results
+goal_2_model_4 <- update(goal_2_model_4_prior, prior_PD = FALSE)
+goal2_model4_summary <- tidy(goal_2_model_4, effects = "fixed", conf.int = TRUE, conf.level = .80)
+goal2_model4_summary_or <- goal2_model4_summary |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or)
+
+saveRDS(goal_2_model_4, "data/goal2_model4.rds")
+# goal_2_model_4 <- readRDS("data/goal2_model4.rds")
+params <- get_variables(goal_2_model_4)
+
+summary(goal_2_model_4)
+
+# model diagnostics
+for (i in 1:length(params)) {
+  print(mcmc_trace(goal_2_model_4, pars = params[[i]]))
+}
+
+for (i in 1:length(params)) {
+  print(mcmc_dens_overlay(goal_2_model_4, pars = params[[i]]))
+}
+
+for (i in 1:length(params)) {
+  print(mcmc_acf(goal_2_model_4, pars = params[[i]]))
+}
+
+neff_ratio(goal_2_model_4)
+rhat(goal_2_model_4)
+prop_goal2 <- function(x){mean(x == 1)}
+
+
+# classify with testing data
+# posterior predictive models
+goal2_pred4 <- posterior_predict(goal_2_model_4, newdata = drop_na(goal2_test))
+goal2_classifications <- goal2_test |>
+  drop_na() |>
+  mutate(goal2_prob = colMeans(goal2_pred4),
+         goal2_class_1 = as.numeric(goal2_prob >= 0.5)) |>
+  select(goal2_prob, goal2_class_1, goal2)
+
+# confusion matrix
+goal2_classifications |>
+  tabyl(goal2, goal2_class_1) |>
+  adorn_totals(c("row", "col"))
+
+goal2_class_summary <- classification_summary(
+  model = goal_2_model_4, data = goal2_test |> drop_na(), cutoff = 0.3)
+
+# specificity: of the households that do not meet goal4, model correctly classifies 81 percent.
+# sensitivity: of the households that do meet goal4, model correctly classifies 55 percent.
+# a total 68 percent of households are correctly classified by this model.
+goal2_class_summary$confusion_matrix
+goal2_class_summary$accuracy_rates
+
+pp_check(goal_2_model_4, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
+  xlab("proportion achieving Goal 2")
+```
+
+-   recode TANF received to first year only

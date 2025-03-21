@@ -2,6 +2,7 @@
 title: "Creation of Dataset for Hierarchical Model"
 author: "Shelby Tisdale"
 format: html
+---o
 ---
 
 # Load Data and Packages
@@ -33,10 +34,14 @@ tanf_state_year <- tanf |>
   # assistance, and percent spent on program management
   mutate(pct_unobligated = unobligated_balance/(funds_awarded + carryover),
          pct_basic_assistance = basic_assistance/total_expenditures,
-         pct_program_mgmt = program_mgmt/total_expenditures) |>
+         pct_program_mgmt = program_mgmt/total_expenditures,
+         pct_work_ed = work_ed/total_expenditures,
+         pct_fatherhood_programs = fatherhood_programs/total_expenditures,
+         pct_pregnancy_prevention = pregnancy_prevention/total_expenditures,
+         pct_child_welfare = child_welfare/total_expenditures) |>
   # select relevant variables
   select(state, fiscal_year, pct_unobligated, pct_program_mgmt,
-         pct_basic_assistance)
+         pct_basic_assistance, pct_work_ed, pct_fatherhood_programs, pct_pregnancy_prevention, pct_child_welfare)
 ```
 
 ```{r}
@@ -460,7 +465,8 @@ goal3 <- sipp_participants |>
   left_join(goal_3_women, by = join_by(ssuid, pnum)) |>
   mutate(goal3 = if_else(is.na(had_child_unmarried), 1, 0)) |>
   select(-had_child_unmarried) |>
-  distinct()
+  distinct() |>
+  mutate(unique_id = paste0(as.character(ssuid), as.character(pnum)))
 ```
 
 # **Creating Variables for Achievement of TANF Goal 4**
@@ -535,7 +541,7 @@ hh_goal4 <- goal4 |>
 
 sipp_all_goals <- sipp_participants |>
   # select necessary variables
-  select(ssuid, pnum, monthcode, year, tage, state, eeduc, eorigin, trace, esex, ecitizen, tceb, erelrpe, ejb1_scrnr,
+  select(ssuid, pnum, monthcode, year, tage, state, eeduc, eorigin, trace, esex, ecitizen, tceb, erelrpe, ejb1_scrnr, ems_ehc,
   # tanf variables
   etanf_bmonth, rtanf_lcyr, etanf_emonth, etanf_covtyp, etanf_own, rtanf_cflg,
   rtanf_mnyn, rtanf_yryn, ttanf_amt) |>
@@ -592,7 +598,7 @@ sipp_all_goals <- sipp_participants |>
       year == 2022 & monthcode >= 10 ~ 2023
     )
   ) |>
-  select(-c(ecitizen, trace, eeduc, esex, eorigin)) |>
+  select(-c(ecitizen, trace, eeduc, eorigin, esex)) |>
   # create indicators for whether this person-month is included in the sample for a certain goal
   mutate(
     # all households are in goal 1
@@ -600,10 +606,11 @@ sipp_all_goals <- sipp_participants |>
     # selected households for goal2
     in_goal2 = if_else(ssuid %in% goal2$ssuid, 1, 0),
     # individuals in goal 3
-    in_goal3 = if_else(ssuid %in% goal3$ssuid, 1, 0),
+    in_goal3 = if_else(paste0(ssuid, pnum) %in% goal3$unique_id, 1, 0),
     # all households are in goal 4
     in_goal4 = if_else(ssuid %in% hh_goal4$ssuid, 1, 0)
     ) |>
+  mutate(in_goal3 = if_else(is.na(in_goal3), 0, in_goal3)) |>
   # join goal 1 achievement data
   left_join(hh_goal1, by = join_by(year, monthcode, ssuid)) |>
   # join goal 2 achievement data
@@ -626,7 +633,8 @@ sipp_all_goals <- sipp_participants |>
   # goal fulfillment indicators
   in_goal1, in_goal2, in_goal3, in_goal4, goal1, goal2, goal3, goal4,
   # state-level predictors
-  pct_unobligated, pct_program_mgmt, pct_basic_assistance,
+  pct_unobligated, pct_program_mgmt, pct_basic_assistance, pct_work_ed,
+  pct_fatherhood_programs, pct_pregnancy_prevention, pct_child_welfare,
   # individual predictors
   received_job_training, hh_married_month, ejb1_scrnr,
   # tanf variables
@@ -636,8 +644,9 @@ sipp_all_goals <- sipp_participants |>
   # variable for party of governor in that year
   mutate(party = case_when(
     state == "ALABAMA" ~ "R",
-    state == "ALASKA" & year > 2018 ~ "R",
-    state == "ALASKA" & year <= 2018 ~ "I",
+    state == "ALASKA" ~ "R",
+    # make note for alaska in methods
+    #state == "ALASKA" & year <= 2018 ~ "I",
     state == "ARIZONA" ~ "R",
     state == "ARKANSAS" ~ "R",
     state == "CALIFORNIA" ~ "D",
@@ -749,8 +758,6 @@ sipp_all_goals <- sipp_participants |>
   ) |>
   mutate(tanf_amt_received = if_else(is.na(tanf_amt_received), 0, tanf_amt_received))
 
-  
-
 # save data 
  write.csv(sipp_all_goals, "data/sipp_all_goals.csv")
 ```
@@ -758,190 +765,143 @@ sipp_all_goals <- sipp_participants |>
 ```{r}
 #| label: load-complete-dataset
 
-# sipp_all_goals <- read_csv("sipp_all_goals.csv")
+ sipp_all_goals <- read_csv("data/sipp_all_goals.csv")
 
 ```
 
-# Goal 1
-
-**Goal 1:** Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.
-
-**Criteria:** This goal is fulfilled for a given household and month if all children in the household have at least one relative in the household.
-
-**Model:** This model will evaluate the impacts of state-level unobligated funds on household-level fulfillment of TANF Goal 1.
-
-## Aggregate Dataset to Household-Year Level
-
--   Should this be aggregated to the Household-year or Household-month Level?
-
-    -   I'm thinking household year.
-
--   Should I include poverty status or income as a covariate, given that all individuals in the sample are in poverty? Should I change the sample to include people of different all income levels? My initial thoughts are that since the only people eligible for TANF are families in poverty, this is who we should model for.
-
-    -   What should I control for?
-    -   household level demographics - householder
-
--   look at how unobligated funds change year to year.
-
 ```{r}
-```
+#| label: create-table-1-hh_characteristics
+#| fig-width: 10.5
 
-## Table 1
-
-## EDA
-
-## Modeling
-
-Let $Y_{ij1}$ denote whether or not household $i$ in state $j$ met the criteria for Goal 1.
-
-$$ Y_{ij1} = \begin{cases} 1 & \text{yes} \\ 0 & \text{no} \end{cases} $$
-
-## Results
-
-# Goal 2
-
-**Goal 2:** End the dependence of needy parents on government benefits by promoting job preparation, work, and marriage.
-
-**Participant Households:** All households who received government benefits in the earliest year of their participation in the study.
-
-**Criteria:** Goal 2 is fulfilled for a participant household if household members are no longer receiving government benefits by the end of the reference frame. Variables related to job preparation, work, and marriage will be used as predictors.
-
-## Aggregate Dataset
-
-**Questions:**
-
--   percent of unobligated funds changes by year, what do I do with that?
--   maybe instead of a binary outcome, we could create a type of "**success rate**" variable that could be modeled, the average for each household over the years.
--   To disregard the longitudianl component of the data, we are making a simplifying assumption that the percent of unobligated funds in one year is independent of the the percent in another year (for the same state) - each state-year combo is a separate group in the hierarchy. According to the visualization below, that kind of independence doesn't seem to be the case.
--   We could use year as a separate grouping variable OR use a state-year grouping structure?
-    -   changing success rate to outcome?
--   Should my total TANF variable be some kind of ratio of total tanf received to number of years in the study?
-    -   average tanf per year
--   **Note:** include variable for time participating in study
-
-```{r}
-sipp_goal2 <- sipp_all_goals |>
-  filter(in_goal2 == 1) |>
-  mutate(received_job_training = if_else(received_job_training == "0", 0, 1)) |>
-  group_by(household_id, state, fiscal_year, goal2, pct_unobligated, party) |>
-  summarize(
-    total_tanf = sum(tanf_amt_received, na.rm = TRUE),
-    job_prep = max(received_job_training, na.rm = TRUE)
-    ) |>
-  distinct()
-```
-
-## Table 1
-
-## EDA
-
-```{r}
-
-# histogram of goal 2 achievement rate (state-year)
-sipp_goal2 |>
-  mutate(goal2 = if_else(goal2 == "1", 1, 0)) |>
-  group_by(state, fiscal_year) |>
-  summarize(goal2_rate = mean(goal2)) |>
-  ggplot(aes(x = goal2_rate)) +
-  geom_histogram() +
-  labs(x = "goal 2 success rate by state and year",
-       y = "Count")
-
-# histogram of goal 2 achievement rate (state only)
-sipp_goal2 |>
-  mutate(goal2 = if_else(goal2 == "1", 1, 0)) |>
-  group_by(state) |>
-  summarize(goal2_rate = mean(goal2)) |>
-  ggplot(aes(x = goal2_rate)) +
-  geom_histogram() +
-  labs(x = "goal 2 success rate by state",
-       y = "Count")
-
-# line graph - percent unobligated funds 2017-2021
-# grouped by state
-# there is variation from year-to-year
-# needs to be accounted for in model
-sipp_goal2 |>
-  mutate(goal2 = if_else(goal2 == "1", 1, 0)) |>
-  ggplot(aes(x = fiscal_year, group = state, y = pct_unobligated)) +
-  geom_line() +
-  facet_wrap(~state) +
-  theme_minimal() +
-  labs(x = "fiscal year", y = "percent unobligated funds")
-
-# gives sample size for each state
-goal2_hh_per_state <- sipp_goal2 |>
-  select(state, household_id) |>
+sipp_all_goals |>
+   mutate(
+    education = fct_collapse(
+      education,
+      "Less than High School Diploma" = c("Less than 1st grade", "1st, 2nd, 3rd or 4th grade", "5th or 6th grade", "7th or 8th grade", "9th grade", "10th grade", "11th grade", "12th grade, no diploma"),
+      "High School Diploma" = c("High School Graduate"),
+      "Some College" = c("Some college credit, but less than 1 year", "1 or more years of college, no degree"),
+      "Associate Degree" = c("Associate's degree"),
+      "Bachelor's Degree" = c("Bachelor's degree"),
+      "Master's Degree" = c("Master's degree"),
+      "Doctoral or Professional Degree" = c("Professional School degree", "Doctorate degree"))) |>
+  mutate(education = fct_relevel(
+      education,
+      c("Less than High School Diploma", "High School Diploma", "Some College", "Associate Degree", "Bachelor's Degree", "Master's Degree", "Doctoral or Professional Degree"))) |>
+  select(household_id, fiscal_year, age, education, ethnicity, race, sex, citizenship,
+         in_goal1, in_goal2, in_goal3, in_goal4, tanf_received_year, is_householder) |>
   distinct() |>
-  group_by(state) |>
-  count()
+  group_by(household_id) |>
+  mutate(max_education = max(as.numeric(education), na.rm = TRUE),
+         in_goal3 = max(as.numeric(in_goal3, na.rm = TRUE)),
+         in_goal1 = max(as.numeric(in_goal1, na.rm = TRUE))) |>
+  ungroup() |>
+  mutate(
+    race = factor(race),
+    race = fct_collapse(
+      race,
+      "White" = c("White"),
+      "Black" = c("Black", "Black-AIAN", "White-Black"),
+      "AIAN" = c("AIAN", "White-AIAN"),
+      "Asian" = c("Asian", "White-Asian"),
+      "Other" = c("Other", "HP")
+    ),
+   race = fct_relevel(race, c("White", "Black", "Asian", "AIAN", "Other"))
+  ) |>
+  select(-education) |>
+  filter(is_householder == 1) |>
+  distinct(household_id, .keep_all = TRUE) |>
+  select(age, race, sex, in_goal1, in_goal2, in_goal3, in_goal4, tanf_received_year, max_education) |>
+  #distinct() |>
+  tbl_summary()
+  
+# table 1, person-level
+sipp_all_goals |>
+  mutate(
+    race = factor(race),
+    race = fct_collapse(
+      race,
+      "White" = c("White"),
+      "Black" = c("Black", "Black-AIAN", "White-Black"),
+      "AIAN" = c("AIAN", "White-AIAN"),
+      "Asian" = c("Asian", "White-Asian"),
+      "Other" = c("Other", "HP")
+    ),
+   race = fct_relevel(race, c("White", "Black", "Asian", "AIAN", "Other"))
+  ) |>
+  select(household_id, pnum, fiscal_year, age, race, sex, ethnicity, in_goal1, in_goal2, in_goal3, in_goal4, tanf_received_year) |>
+  mutate(fiscal_year = as.numeric(as.character(fiscal_year))) |>
+  group_by(household_id, pnum) |>
+  filter(fiscal_year == min(fiscal_year)) |>
+  ungroup() |>
+  distinct(household_id, pnum, fiscal_year, .keep_all = TRUE) |>
+  tbl_summary(
+    include = c(age, race, ethnicity, sex, in_goal3, fiscal_year),
+    # by = fiscal_year,
+    missing = "no"
+  )
 
-sipp_goal2 |>
-  mutate(goal2 = if_else(goal2 == "1", 1, 0)) |>
-  group_by(state, fiscal_year, pct_unobligated, party) |>
-  summarize(goal2_rate = mean(goal2)) |>
-  ggplot(aes(x = pct_unobligated, y = goal2_rate, color = party)) +
-  geom_point()
+# table 1, household-level
+sipp_all_goals |>
+  select(household_id, fiscal_year, in_goal1, in_goal2, in_goal4, goal1, goal2, goal4) |>
+  mutate(fiscal_year = as.numeric(as.character(fiscal_year))) |>
+  group_by(household_id) |>
+  filter(fiscal_year == min(fiscal_year)) |>
+  ungroup() |>
+  distinct(household_id, fiscal_year, .keep_all = TRUE) |>
+  tbl_summary(
+    include = c(in_goal1, in_goal2, in_goal4, goal1, goal2, goal4, fiscal_year),
+    # by = fiscal_year,
+    missing = "no"
+  )
+
+# table 1, state-level
+state_tbl1 <- sipp_all_goals |>
+  select(fiscal_year, state, pct_unobligated, pct_program_mgmt, pct_basic_assistance, pct_work_ed, pct_fatherhood_programs, pct_pregnancy_prevention, party) |>
+  mutate(fiscal_year = as.numeric(as.character(fiscal_year))) |>
+  left_join(tanf, by = c("state", "fiscal_year")) |>
+  distinct(state, fiscal_year, .keep_all = TRUE) |>
+  mutate(available_funds = funds_awarded/1000000 + carryover/1000000,
+         total_expenditures = total_expenditures/1000000,
+         pct_unobligated = pct_unobligated*100,
+         pct_basic_assistance = pct_basic_assistance*100,
+         party = if_else(party == "D", "Democrat", "Republican")) |>
+  tbl_summary(
+    include = c(available_funds, total_expenditures, pct_unobligated, pct_basic_assistance, party),
+    by = fiscal_year,
+    missing = "no",
+    statistic = list(all_continuous() ~ "{median} ({p25}, {p75})"),
+    label = list(
+      available_funds = "Available TANF Funds",
+      total_expenditures = "Total TANF Expenditures",
+      pct_unobligated = "Percent of TANF Funds Unobligated",
+      pct_basic_assistance = "Percent of TANF Expenditures on Basic Assistance",
+      party = "Party of Governor"
+    )) |>
+  modify_footnote_body(
+    footnote = "In millions of dollars",
+    columns = "label",
+    rows = (variable == "available_funds" | variable == "total_expenditures") & row_type == "label"
+  ) |>
+  modify_footnote_body(
+    footnote = "Sum of awarded funds for current year and carryover from previous year (in millions of dollars)",
+    columns = "label",
+    rows = (variable == "available_funds") & row_type == "label"
+  ) |>
+  modify_footnote_body(
+    footnote = "Combined spending from federal TANF block grant and state maintenance-of-effort funds (in millions of dollars)",
+    columns = "label",
+    rows = (variable == "total_expenditures") & row_type == "label"
+  ) |>
+      as_gt() |>
+      tab_header(md("**Table 1. State-level Characteristics for 50 States and District of Columbia**")) |>
+  tab_options(table.font.size = 14,
+              table.width = 700) |>
+  opt_table_font(font = "Times New Roman") |>
+  opt_align_table_header(align = "left") |>
+  cols_width(starts_with("label") ~ px(120)) |>
+  fmt_number(decimals = 1)
+  
+  
+gtsave(state_tbl1, "images/state_tbl1.html")
+
 ```
-
-## Modeling
-
-Let $Y_{ij2}$ denote whether or not household $i$ in state $j$ met the criteria for Goal 2.
-
-$$
-Y_{ij2} = \begin{cases} 1 & \text{yes} \\ 0 & \text{no} \end{cases}
-$$
-
-$$
-X_{ij1} = \text{whether householder i in state j is married at end of reference frame} \\
-X_{ij2} = \text{whether householder i in state j participated in job preparation} \\
-X_{ij3} = \text{whether householder i in state j is employed at end of reference frame} \\
-X_{ij4} = \text{amount of TANF funds received by household i in state j during reference period} \\
-X_{j5} = \text{percent of unobligated funds for state j}
-$$
-
-Let $\pi_{ij}$ be the probability that household $i$ fulfills Goal 2. Then, $Y_{ij2}|\pi_{ij} \sim \text{Bern}(\pi_{ij})$.
-
-We are using a **random intercepts logistic regression model.**
-
-Model within state j:
-
-$$
-Y_{ij2}|\beta_{0j}, \beta_1, \beta_2, \beta_3, \beta_4, \beta_5 \sim \text{Bern}(\pi_{ij}) \\ \text{ with } \log(\frac{\pi_{ij}}{1-\pi_{ij}}) = \beta_{0j} +  \beta_1X_{ij1} + \beta_2X_{ij2} + \beta_3X_{ij3} + \beta_4X_{ij4} + \beta_5X_j
-$$
-
-Variability between states:
-
-**Assumptions**
-
--   The state-specific intercepts $B_{0j}$ describe the underlying achievement rates, as measured by the log odds of goal achievement for each state $j$. These acknowledge that some states have higher rates of goal achievement than others.
-
--   The state-specific intercepts $B_{0j}$ are assumed to be Normally distributed around some global intercept $\beta_0$ with standard deviation $\sigma_0$. Thus, $\beta_0$ describes the typical baseline success rate across all expeditions and $\sigma_0$ captures the **between-group variability** in success rates from state to state.
-
--   $\beta_1$ describes the **global** relationship between achievement and householder marriage when controlling for all other variables in the model.
-
-## Results
-
-# Goal 3
-
-## Aggregate Dataset
-
-## Table 1
-
-## EDA
-
-## Modeling
-
-## Results
-
-# Goal 4
-
-## Aggregate Dataset
-
-## Table 1
-
-## EDA
-
-## Modeling
-
-## Results

@@ -16,6 +16,12 @@ library(bit64)
 library(janitor)
 library(gt)
 library(gtsummary)
+library(rstanarm)
+library(bayesplot)
+library(tidybayes)
+library(tidymodels)
+library(bayesrules)
+library(broom.mixed)
 ```
 
 ```{r}
@@ -44,12 +50,242 @@ all_goals <- read_csv("data/sipp_all_goals.csv")
 
 -   look at how unobligated funds change year to year
 
+```{r}
+
+# create race of householder variables and goal1 variable
+hh_demogs <- all_goals |>
+  filter(is_householder == 1) |>
+  filter(in_goal4 == 1) |>
+  select(household_id, state, race, fiscal_year) |>
+  distinct() |>
+  mutate(
+    race = factor(race),
+    race = fct_collapse(
+      race,
+      "White" = c("White"),
+      "Black" = c("Black", "Black-AIAN", "White-Black"),
+      "AIAN" = c("AIAN", "White-AIAN"),
+      "Asian" = c("Asian", "White-Asian"),
+      "Other" = c("Other", "HP")
+    ),
+   race = fct_relevel(race, c("White", "Black", "Asian", "AIAN", "Other"))
+  ) |>
+  distinct() |>
+  group_by(household_id, state, fiscal_year) |>
+  summarize(race = first(race), .groups = "drop")
+
+goal1 <- all_goals |>
+  # selects all households in goal 1 universe
+  filter(in_goal1 == 1) |>
+  # select relevant variables
+  select(household_id, state, fiscal_year, pct_unobligated, pct_basic_assistance, pct_fatherhood_programs, pct_child_welfare, goal1, tanf_amt_received, party) |>
+  group_by(household_id, state, goal1, fiscal_year) |>
+  # summary variables
+  mutate(
+    # amount of tanf received during year
+    tanf_amt_received = sum(tanf_amt_received)/100) |>
+  ungroup() |>
+  distinct() |>
+  left_join(hh_demogs, by = c("household_id", "state", "fiscal_year")) |>
+  mutate(pct_unobligated = pct_unobligated*100,
+         pct_basic_assistance = pct_basic_assistance*100,
+         pct_fatherhood_programs = pct_fatherhood_programs*100,
+         pct_child_welfare = pct_child_welfare*100,
+         is_covid = if_else(fiscal_year >= 2020, 1, 0)) |>
+  filter(!is.na(goal1)) |>
+  group_by(household_id, state, fiscal_year, pct_unobligated, pct_basic_assistance, pct_fatherhood_programs, pct_child_welfare, tanf_amt_received, party, race, is_covid) |>
+  summarize(goal1 = max(goal1, na.rm = TRUE), .groups = "drop")
+
+saveRDS(goal1, "data/goal1.rds")
+```
+
 ## Table 1
 
 ## EDA
 
 ## Modeling
 
+**Note:** Aggregate to household level?
+
 Let $Y_{ij1}$ denote whether or not household $i$ in state $j$ met the criteria for Goal 1.
 
 $$ Y_{ij1} = \begin{cases} 1 & \text{yes} \\ 0 & \text{no} \end{cases} $$
+
+```{r}
+set.seed(812)
+
+goal1_split <- initial_split(goal1)
+goal1_train <- training(goal1_split)
+goal1_test <- testing(goal1_split)
+
+# tune prior
+goal_1_model_1_prior <- stan_glmer(
+  goal1 ~ pct_unobligated + pct_basic_assistance + pct_fatherhood_programs + pct_child_welfare + tanf_amt_received + is_covid +  party + race + (1 | household_id) + (1 | state),
+  data = goal1_train, family = binomial,
+  # https://www.aecf.org/blog/child-welfare-and-foster-care-statistics#:~:text=Children%20Entering%20Foster%20Care,care%20by%20race%20and%20ethnicity
+  # 3/1000 children in foster care
+  prior_intercept = normal(-5.81, 1.5, autoscale = TRUE),
+  prior = normal(0, 2.5, autoscale = TRUE),
+  prior_covariance = decov(reg = 1, conc = 1, shape = 1, scale = 1),
+  chain = 10, iter = 10000, seed = 12345,
+  prior_PD = TRUE)
+
+
+# summarize prior
+prior_summary(goal_1_model_1_prior)
+tidy(goal_1_model_1_prior)
+
+# model results
+goal_1_model_1 <- update(goal_1_model_1_prior, prior_PD = FALSE)
+goal1_model1_summary <- tidy(goal_1_model_1, effects = "fixed", conf.int = TRUE, conf.level = .80)
+goal1_model1_summary_or <- goal1_model1_summary |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high),
+         odd_ratio = format(odd_ratio, scientific = F),
+         conf.low_or = format(conf.low_or, scientific = F),
+         conf.high_or = format(conf.high_or, scientific = F)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or)
+
+saveRDS(goal_1_model_1, "data/goal1_model1.rds")
+# goal_1_model_1 <- readRDS("data/goal1_model1.rds")
+params <- get_variables(goal_1_model_1)
+
+# model diagnostics
+for (i in 1:length(params)) {
+  print(mcmc_trace(goal_1_model_1, pars = params[[i]]))
+}
+
+for (i in 1:length(params)) {
+  print(mcmc_dens_overlay(goal_1_model_1, pars = params[[i]]))
+}
+
+for (i in 1:length(params)) {
+  print(mcmc_acf(goal_1_model_1, pars = params[[i]]))
+}
+
+neff_ratio(goal_1_model_1)
+rhat(goal_1_model_1)
+prop_goal3 <- function(x){mean(x == 1)}
+pp_check(goal_1_model_1, nreps = 100, plotfun = "stat", stat = "prop_goal3")
+
+# classify with testing data
+# posterior predictive models
+goal1_pred1 <- posterior_predict(goal_1_model_1, newdata = drop_na(goal1_test))
+goal1_classifications <- goal1_test |>
+  drop_na() |>
+  mutate(goal1_prob = colMeans(goal1_pred1),
+         goal1_class_1 = as.numeric(goal1_prob >= 0.5)) |>
+  select(goal1_prob, goal1_class_1, goal1)
+
+# confusion matrix
+goal1_classifications |>
+  tabyl(goal1, goal1_class_1) |>
+  adorn_totals(c("row", "col"))
+
+goal1_class_summary <- classification_summary(
+  model = goal_1_model_1, data = goal1_test |> drop_na(), cutoff = 0.5)
+
+# specificity: of the households that do not meet goal1, model correctly classifies __ percent.
+# sensitivity: of the households that do meet goal4, model correctly classifies __ percent.
+# a total __ percent of households are correctly classified by this model.
+goal1_class_summary$confusion_matrix
+goal1_class_summary$accuracy_rates
+```
+
+```{r}
+# no state-level grouping
+# using sample
+
+set.seed(812)
+
+goal1_sample_hh <- goal1 |>
+  select(household_id) |>
+  sample_n(500)
+
+goal1_sample <- goal1 |>
+  filter(household_id %in% goal1_sample_hh$household_id)
+
+# tune prior
+goal_1_model_2_prior <- stan_glmer(
+  goal1 ~ pct_unobligated + pct_basic_assistance + pct_fatherhood_programs + pct_child_welfare + tanf_amt_received + is_covid +  party + race + (1 | household_id),
+  data = goal1, family = binomial,
+  # https://www.childtrends.org/publications/data-on-families-with-low-incomes-across-america-can-inform-two-generation-approaches
+  # about 51%  of low-income families are two-parent families
+  prior_intercept = normal(0.017, 1.5, autoscale = TRUE),
+  prior = normal(0, 2.5, autoscale = TRUE),
+  prior_covariance = decov(reg = 1, conc = 1, shape = 1, scale = 1),
+  chain = 10, iter = 10000, seed = 12345,
+  prior_PD = TRUE)
+
+
+# summarize prior
+prior_summary(goal_1_model_2_prior)
+tidy(goal_1_model_2_prior)
+
+# model results
+goal_1_model_2 <- update(goal_1_model_2_prior, prior_PD = FALSE)
+summary(goal_1_model_2)
+goal1_model2_summary <- tidy(goal_1_model_2, effects = "fixed", conf.int = TRUE, conf.level = .80)
+goal1_model2_summary_or <- goal1_model2_summary |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high),
+         odd_ratio = format(odd_ratio, scientific = F),
+         conf.low_or = format(conf.low_or, scientific = F),
+         conf.high_or = format(conf.high_or, scientific = F)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or)
+
+saveRDS(goal_1_model_2, "data/goal1_model2.rds")
+goal_1_model_2 <- readRDS("data/goal_1_model2.rds")
+params <- get_variables(goal_1_model_2)
+
+# model diagnostics
+for (i in 1:length(params)) {
+  print(mcmc_trace(goal_1_model_2, pars = params[[i]]))
+}
+
+for (i in 1:length(params)) {
+  print(mcmc_dens_overlay(goal_1_model_2, pars = params[[i]]))
+}
+
+for (i in 1:length(params)) {
+  print(mcmc_acf(goal_1_model_2, pars = params[[i]]))
+}
+
+neff_ratio(goal_1_model_2)
+rhat(goal_1_model_2)
+prop_goal3 <- function(x){mean(x == 1)}
+pp_check(goal_1_model_2, nreps = 100, plotfun = "stat", stat = "prop_goal3")
+
+# classify with testing data
+# posterior predictive models
+goal1_pred2 <- posterior_predict(goal_1_model_2, newdata = drop_na(goal1_test))
+goal1_classifications <- goal1_test |>
+  drop_na() |>
+  mutate(goal1_prob = colMeans(goal1_pred2),
+         goal1_class_2 = as.numeric(goal1_prob >= 0.5)) |>
+  select(goal1_prob, goal1_class_1, goal1)
+
+# confusion matrix
+goal1_classifications |>
+  tabyl(goal1, goal1_class_2) |>
+  adorn_totals(c("row", "col"))
+
+goal1_class_summary2 <- classification_summary(
+  model = goal_1_model_2, data = goal1_test |> drop_na(), cutoff = 0.5)
+
+# specificity: of the households that do not meet goal1, model correctly classifies __ percent.
+# sensitivity: of the households that do meet goal4, model correctly classifies __ percent.
+# a total __ percent of households are correctly classified by this model.
+goal1_class_summary2$confusion_matrix
+goal1_class_summary2$accuracy_rates
+
+sum1 <- summary(goal1_fit) |> as.data.frame()
+
+```
+
+\
+\# AGGREGATE DATA BY HOUSEHOLD

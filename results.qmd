@@ -1,0 +1,305 @@
+---
+title: "Results"
+format: html
+editor: visual
+warning: false
+message: false
+---
+
+```{r}
+#| label: load-packages
+
+library(tidyverse)
+library(kableExtra)
+library(broom.mixed)
+library(gt)
+library(gtsummary)
+library(patchwork)
+```
+
+```{r}
+#| label: load-data
+
+goal1 <- read_rds("data/goal1.rds")
+goal2 <- read_rds("data/goal2.rds")
+goal3 <- read_rds("data/goal3.rds")
+goal4 <- read_rds("data/goal4.rds")
+
+```
+
+```{r}
+#| label: load-models
+
+goal1_fit <- read_rds("data/goal1_model1.rds")
+goal2_fit <- read_rds("data/goal2_model4.rds")
+goal3_fit <- read_rds("data/goal_3_model_1.rds")
+goal4_fit <- read_rds("data/goal_4_model_1.rds")
+```
+
+# Goal 1
+
+**Goal 1**: Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.
+
+**Criteria**: This goal is fulfilled for a given household and month if all children in the household have at least one relative in the household.
+
+**Note:** need to fix ordering of race in model (not interpretable, so not included in results)
+
+**Notes (3/19/25)**
+
+-   I ran two models, one with grouping at the state level and one without, neither had any significant predictors
+
+-   Though the sample size is large, the sample of children who do not live with their parents or a relative is super small
+
+-   One potential direction for this is to run the model on the subset of children who do not live with a parent and assess whether they were housed with relatives afterward. I
+
+```{r}
+#| label: goal1-data
+
+goal1 |>
+  select(household_id, goal1) |>
+  distinct() |>
+  group_by(goal1) |>
+  summarize(
+    N = n()) |>
+  gt()
+```
+
+```{r}
+#| label: display-goal-1-results
+
+tidy(goal1_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or) |>
+  filter(term %in% c(
+    "(Intercept)", "pct_unobligated", "pct_basic_assistance",
+    "pct_fatherhood_programs", "pct_child_welfare", "tanf_amt_received",
+    "n_years", "is_covid", "partyR")) |>
+  kable(digits = 3)
+```
+
+# Goal 2
+
+**Goal 2:** End the dependence of needy parents on government benefits by promoting job preparation, work, and marriage.
+
+**Participant Households:** All households who received government benefits in the earliest year of their participation in the study.
+
+**Criteria:** Goal 2 is fulfilled for a participant household if household members are no longer receiving government benefits by the end of the reference frame. Variables related to job preparation, work, and marriage will be used as predictors.
+
+**Notes**
+
+-   Model looks good - made new model with tanf received as a binary indicator for whether the household received TANF at any point in the sample - was significant. I'm going to do the same thing for goal 3 and goal 4 and compare the models.
+
+```{r}
+#| label: goal2-data
+
+goal2 |>
+  group_by(goal2) |>
+  summarize(
+    N = n()) |>
+  gt()
+```
+
+```{r}
+#| label: display-goal-2-results
+
+# add footnotes for binary categorical variables
+# need to update table number when everything is finished
+# bold significant predictors?
+
+goal2_results <- tidy(goal2_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or) |>
+  mutate(
+    term = factor(term),
+    term = fct_relevel(term, c("(Intercept)", "received_job_training", "hh_employed", "tanf_received", "n_years", "hh_marriage", "raceBlack", "raceAsian", "raceAIAN", "raceOther", "received_job_training:hh_employed", "pct_unobligated", "pct_basic_assistance", "pct_work_ed", "partyR", "is_covid"))
+  ) |>
+  arrange(term) |>
+  mutate(
+    conf.low_or = substr(as.character(conf.low_or), 1, 5),
+    conf.high_or = substr(as.character(conf.high_or), 1, 5),
+    cred_interval = paste0("(", conf.low_or, ", ", conf.high_or, ")")) |>
+  select(-c(conf.low_or, conf.high_or)) |>
+  mutate(
+  term = case_match(
+    term,
+    "(Intercept)" ~ "Global Intercept",
+    "received_job_training" ~ "Householder received job training",
+    "hh_employed" ~ "Householder employed",
+    "tanf_received" ~ "Household received TANF cash assistance",
+    "n_years" ~ "Number of years in sample",
+    "hh_marriage" ~ "Householder married",
+    "raceBlack" ~ "Race of householder: Black",
+    "raceAsian" ~ "Race of householder: Asian",
+    "raceAIAN" ~ "Race of householder: AIAN",
+    "raceOther" ~ "Race of householder: Other race",
+    "received_job_training:hh_employed" ~ "Interaction between job training and employment",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated by state in cohort year",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance for state and cohort year",
+    "pct_work_ed" ~ "Percent of TANF expenditures on work education programs for state and cohort year",
+    "partyR" ~ "Governor of state in cohort year is Republican",
+    "is_covid" ~ "Cohort year is 2020 or later"
+  )) |>
+  gt(rowname_col = "term") |>
+  fmt_number(decimals = 3) |>
+  tab_stubhead(label = md("**Term**")) |>
+  cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
+  cols_width(stub() ~ px(250),
+             starts_with("odd") ~ px(150)) |>
+  tab_options(table.font.size = 14,
+              table.width = 600) |>
+  tab_header(md("**Table 2. Posterior Estimates for Achievement of TANF Goal 2**")) |>
+  cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
+  opt_table_font(font = "Times New Roman") |>
+  opt_align_table_header(align = "left") |>
+  tab_footnote(
+    footnote = "Categorical variable (yes = 1, no = 0)",
+    locations = cells_stub(rows = c(
+      "Householder received job training", "Householder employed", "Household received TANF cash assistance", "Race of householder: Black", "Race of householder: Asian", "Race of householder: Other race", "Interaction between job training and employment", "Governor of state in cohort year is Republican", "Cohort year is 2020 or later"
+    ))
+  )
+
+gtsave(goal2_results, "images/goal2_results.html")
+```
+
+```{r}
+pp_check(goal1_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
+  xlab("proportion achieving Goal 1")
+pp_check(goal2_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
+  xlab("proportion achieving Goal 2")
+pp_check(goal3_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
+  xlab("proportion achieving Goal 3")
+pp_check(goal4_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
+  xlab("proportion achieving Goal 4") 
+```
+
+# Goal 3
+
+**Goal 3:** Prevent and reduce the incidence of out-of-wedlock pregnancies
+
+**Participants:** Women age 15-50, for all years in which they are unmarried
+
+**Criteria:** Goal 3 is fulfilled if number of children of an unmarried individual does not increase during reference period (will not catch all cases due to length of pregnancies, abortions, and miscarriages, but should catch most)
+
+**Notes**
+
+-   Update quadratic effect of age
+-   add covid indicator
+
+```{r}
+#| label: goal3-data
+
+goal3 |>
+  group_by(goal3) |>
+  summarize(
+    N = n()) |>
+  gt()
+```
+
+```{r}
+#| label: display-goal-3-results
+
+goal3_results <- tidy(goal3_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or) |>
+  mutate(
+    term = factor(term),
+    term = fct_relevel(term, c("(Intercept)", "n_years", "age", "tanf_amt_received", "raceBlack", "raceAsian", "raceAIAN", "raceOther", "pct_unobligated", "pct_basic_assistance", "pct_pregnancy_prevention", "partyR"))
+  ) |>
+  arrange(term) |>
+  mutate(
+    conf.low_or = substr(as.character(conf.low_or), 1, 5),
+    conf.high_or = substr(as.character(conf.high_or), 1, 5),
+    cred_interval = paste0("(", conf.low_or, ", ", conf.high_or, ")")) |>
+  select(-c(conf.low_or, conf.high_or)) |>
+  mutate(
+  term = as.character(term),
+  term = case_match(
+    term,
+    "(Intercept)" ~ "Global Intercept",
+    "tanf_amt_received" ~ "Amount of TANF Cash Assistance Received (in hundreds of dollars)",
+    "n_years" ~ "Number of years in sample",
+    "age" ~ "Age of person",
+    "raceBlack" ~ "Race of householder: Black",
+    "raceAsian" ~ "Race of householder: Asian",
+    "raceAIAN" ~ "Race of householder: AIAN",
+    "raceOther" ~ "Race of householder: Other race",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated by state in cohort year",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance for state and cohort year",
+    "pct_pregnancy_prevention" ~ "Percent of TANF expenditures on pregnancy prevention programs for state and cohort year",
+    "partyR" ~ "Governor of state in cohort year is Republican"
+  )) |>
+  gt(rowname_col = "term") |>
+  fmt_number(decimals = 3) |>
+  tab_stubhead(label = md("**Term**")) |>
+  cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
+  cols_width(stub() ~ px(250),
+             starts_with("odd") ~ px(150)) |>
+  tab_options(table.font.size = 14,
+              table.width = 600) |>
+  tab_header(md("**Table 2. Posterior Estimates for Achievement of TANF Goal 2**")) |>
+  cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
+  opt_table_font(font = "Times New Roman") |>
+  opt_align_table_header(align = "left") |>
+  tab_footnote(
+    footnote = "Categorical variable (yes = 1, no = 0)",
+    locations = cells_stub(rows = c("Race of householder: Black", "Race of householder: Asian", "Race of householder: Other race", "Governor of state in cohort year is Republican", "Cohort year is 2020 or later"
+    ))
+  )
+```
+
+# Goal 4
+
+**Goal:** Encourage the formation and maintenance of two-parent families.
+
+**Participants:** Households with children and at least one parent
+
+**Criteria:** one parent family is two-parent family at end of reference period, two-parent family is still two-parent family
+
+**Notes**
+
+```{r}
+#| label: goal4-data
+
+goal4 |>
+  group_by(goal4) |>
+  summarize(
+    N = n()) |>
+  gt()
+```
+
+```{r}
+#| label: display-goal-4-results
+
+tidy(goal4_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or) |>
+  kable(digits = 3)
+```
+
+**Next steps:**
+
+-   Finalize all models
+
+-   Write methods section
+
+-   Visualize results
+
+-   calculate percentage of variability for each model - look in Bayes rules book (setting up model with no predictors)
+
+**Takeaways:**
+
+-   overarching themes
+
+-   conclusions from models
