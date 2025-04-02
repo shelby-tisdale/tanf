@@ -30,9 +30,9 @@ goal4 <- read_rds("data/goal4.rds")
 ```{r}
 #| label: load-models
 
-goal1_fit <- read_rds("data/goal1_model1.rds")
+goal1_fit <- read_rds("data/goal1_model2.rds")
 goal2_fit <- read_rds("data/goal2_model4.rds")
-goal3_fit <- read_rds("data/goal_3_model_1.rds")
+goal3_fit <- read_rds("data/goal_3_model_2.rds")
 goal4_fit <- read_rds("data/goal_4_model_1.rds")
 ```
 
@@ -67,17 +67,83 @@ goal1 |>
 ```{r}
 #| label: display-goal-1-results
 
-tidy(goal1_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+goal1_data <- goal1 |>
+  mutate(goal1 = if_else(goal1 == 1, "Yes", "No")) |>
+  tbl_summary(by = goal1, include = c(race, sex, age), missing = "no", label = list(race = "Race of child", sex = "Sex of child", age = "Age of child")) |>
+  modify_header(label = "**Achieved Goal 1**") |>
+  as_gt() |>
+  cols_width(label ~ pct(35)) |>
+  opt_table_font(font = system_fonts("old-style")) |>
+  tab_options(table.font.size = 16,table.width = px(600), data_row.padding = px(5)) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+
+gtsave(goal1_data, "images/goal1_data.png")
+
+goal1_results <- tidy(goal1_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
   mutate(odd_ratio = exp(estimate),
          conf.low_or = exp(conf.low),
          conf.high_or = exp(conf.high)
          ) |>
   select(term, odd_ratio, conf.low_or, conf.high_or) |>
-  filter(term %in% c(
-    "(Intercept)", "pct_unobligated", "pct_basic_assistance",
-    "pct_fatherhood_programs", "pct_child_welfare", "tanf_amt_received",
-    "n_years", "is_covid", "partyR")) |>
-  kable(digits = 3)
+  mutate(
+    term = factor(term),
+    term = fct_relevel(term, c("(Intercept)", "raceBlack", "sexMale", "age", "pct_unobligated", "pct_basic_assistance", "pct_fatherhood_programs", "pct_foster", "pct_child_welfare", "partyR", "is_covid"))
+  ) |>
+  arrange(term) |>
+  mutate(
+    conf.high_or = as.character(format(conf.high_or, digits = 3, scientific = F)),
+    conf.low_or = as.character(format(conf.low_or, digits = 3, , scientific = F)),
+    #conf.low_or = substr(as.character(conf.low_or), 1, 5),
+    #conf.high_or = substr(as.character(conf.high_or), 1, 5),
+    cred_interval = paste0("(", conf.low_or, ", ", conf.high_or, ")")) |>
+  mutate(
+    cred_interval = str_replace(cred_interval, "\\( ", "\\(")
+    ) |>
+  select(-c(conf.low_or, conf.high_or)) |>
+  mutate(
+  term = as.character(term),
+  term = case_match(
+    term,
+    "(Intercept)" ~ "Global Intercept",
+    "raceBlack" ~ "Race of child: Black",
+    "age" ~ "Age of child",
+    "sexMale" ~ "Child is male",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance",
+    "pct_child_welfare" ~ "Percent of TANF expenditures on child welfare programs",
+    "pct_fatherhood_programs" ~ "Percent of TANF expenditures on fatherhood programs",
+    "pct_foster" ~ "Percent of TANF expenditures on foster care services and maintenance payments",
+    "partyR" ~ "Governor of state in year is Republican",
+    "is_covid" ~ "Year is 2020 or later"
+  )) |>
+  gt(rowname_col = "term") |>
+  fmt_number(decimals = 3) |>
+  tab_stubhead(label = md("**Term**")) |>
+  cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
+  cols_width(stub() ~ px(300)) |>
+  tab_options(table.font.size = 16,table.width = px(800), data_row.padding = px(5)) |>
+  cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
+  opt_table_font(font = system_fonts("old-style")) |>
+  opt_align_table_header(align = "left") |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_body(rows = c("Age of child", "Percent of TANF expenditures on fatherhood programs", "Governor of state in year is Republican"))) |>
+  tab_footnote(
+    footnote = "categorical variable (yes = 1, no = 0)",
+    locations = cells_stub(rows = c("Race of child: Black", "Child is male", "Governor of state in year is Republican", "Year is 2020 or later"
+    ))
+  ) |>
+  tab_footnote(
+    footnote = "for state and cohort year",
+    locations = cells_stub(rows = c("Percent of TANF funds unobligated", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on fatherhood programs", "Percent of TANF expenditures on child welfare programs", "Percent of TANF expenditures on foster care services and maintenance payments"))
+  ) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+
+gtsave(goal1_results, "images/goal1results.png")
+
+
 ```
 
 # Goal 2
@@ -87,10 +153,6 @@ tidy(goal1_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
 **Participant Households:** All households who received government benefits in the earliest year of their participation in the study.
 
 **Criteria:** Goal 2 is fulfilled for a participant household if household members are no longer receiving government benefits by the end of the reference frame. Variables related to job preparation, work, and marriage will be used as predictors.
-
-**Notes**
-
--   Model looks good - made new model with tanf received as a binary indicator for whether the household received TANF at any point in the sample - was significant. I'm going to do the same thing for goal 3 and goal 4 and compare the models.
 
 ```{r}
 #| label: goal2-data
@@ -108,6 +170,17 @@ goal2 |>
 # add footnotes for binary categorical variables
 # need to update table number when everything is finished
 # bold significant predictors?
+
+goal2_data <- goal2 |>
+  mutate(goal2 = if_else(goal2 == 1, "Yes", "No")) |>
+  tbl_summary(by = goal2, include = c(hh_marriage, race, hh_employed, received_job_training), missing = "no", label = list(race = "Race", hh_marriage = "Householder is married", hh_employed = "Householder is employed", received_job_training = "Householder received job training")) |>
+  modify_header(label = "**Achieved Goal 2**") |>
+  as_gt() |>
+  opt_table_font(font = system_fonts("old-style")) |>
+  tab_options(table.font.size = 16,table.width = px(600), data_row.padding = px(5)) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
 
 goal2_results <- tidy(goal2_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
   mutate(odd_ratio = exp(estimate),
@@ -139,9 +212,9 @@ goal2_results <- tidy(goal2_fit, effects = "fixed", conf.int = TRUE, conf.level 
     "raceAIAN" ~ "Race of householder: AIAN",
     "raceOther" ~ "Race of householder: Other race",
     "received_job_training:hh_employed" ~ "Interaction between job training and employment",
-    "pct_unobligated" ~ "Percent of TANF funds unobligated by state in cohort year",
-    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance for state and cohort year",
-    "pct_work_ed" ~ "Percent of TANF expenditures on work education programs for state and cohort year",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance",
+    "pct_work_ed" ~ "Percent of TANF expenditures on work education programs",
     "partyR" ~ "Governor of state in cohort year is Republican",
     "is_covid" ~ "Cohort year is 2020 or later"
   )) |>
@@ -149,33 +222,37 @@ goal2_results <- tidy(goal2_fit, effects = "fixed", conf.int = TRUE, conf.level 
   fmt_number(decimals = 3) |>
   tab_stubhead(label = md("**Term**")) |>
   cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
-  cols_width(stub() ~ px(250),
-             starts_with("odd") ~ px(150)) |>
-  tab_options(table.font.size = 14,
-              table.width = 600) |>
-  tab_header(md("**Table 2. Posterior Estimates for Achievement of TANF Goal 2**")) |>
+  tab_options(table.font.size = 16,table.width = px(800), data_row.padding = px(5)) |>
   cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
-  opt_table_font(font = "Times New Roman") |>
+  opt_table_font(font = system_fonts("old-style")) |>
   opt_align_table_header(align = "left") |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_body(rows = c("Global Intercept", "Householder received job training", "Householder employed", "Household received TANF cash assistance", "Number of years in sample", "Householder married", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on work education programs"))) |>
   tab_footnote(
-    footnote = "Categorical variable (yes = 1, no = 0)",
+    footnote = "categorical variable (yes = 1, no = 0)",
     locations = cells_stub(rows = c(
-      "Householder received job training", "Householder employed", "Household received TANF cash assistance", "Race of householder: Black", "Race of householder: Asian", "Race of householder: Other race", "Interaction between job training and employment", "Governor of state in cohort year is Republican", "Cohort year is 2020 or later"
+      "Householder received job training", "Householder employed", "Household received TANF cash assistance", "Race of householder: Black", "Race of householder: Asian", "Race of householder: Other race", "Interaction between job training and employment", "Governor of state in cohort year is Republican", "Cohort year is 2020 or later", "Interaction between job training and employment"
     ))
-  )
+  ) |>
+  tab_footnote(
+    footnote = "for state and cohort year",
+    locations = cells_stub(rows = c("Percent of TANF funds unobligated", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on work education programs"))
+  ) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
 
-gtsave(goal2_results, "images/goal2_results.html")
+gtsave(goal2_results, "images/goal2_results.png")
+gtsave(goal2_data, "images/goal2_data.png")
+goal2_results
 ```
 
 ```{r}
-pp_check(goal1_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
-  xlab("proportion achieving Goal 1")
-pp_check(goal2_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
-  xlab("proportion achieving Goal 2")
-pp_check(goal3_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
-  xlab("proportion achieving Goal 3")
-pp_check(goal4_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
-  xlab("proportion achieving Goal 4") 
+#pp_check(goal1_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
+  #xlab("proportion achieving Goal 2")
+#pp_check(goal3_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
+  #xlab("proportion achieving Goal 3")
+#pp_check(goal4_fit, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
+  #xlab("proportion achieving Goal 4") 
 ```
 
 # Goal 3
@@ -204,6 +281,19 @@ goal3 |>
 ```{r}
 #| label: display-goal-3-results
 
+
+goal3_data <- goal3 |>
+  mutate(goal3 = if_else(goal3 == 1, "Yes", "No")) |>
+  tbl_summary(by = goal3, include = c(age, race), missing = "no", label = list(age = "Age", race = "Race")) |>
+  modify_header(label = "**Achieved Goal 3**") |>
+  as_gt() |>
+  opt_table_font(font = system_fonts("old-style")) |>
+  tab_options(table.font.size = 16,table.width = px(600), data_row.padding = px(5)) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+
+
 goal3_results <- tidy(goal3_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
   mutate(odd_ratio = exp(estimate),
          conf.low_or = exp(conf.low),
@@ -212,48 +302,73 @@ goal3_results <- tidy(goal3_fit, effects = "fixed", conf.int = TRUE, conf.level 
   select(term, odd_ratio, conf.low_or, conf.high_or) |>
   mutate(
     term = factor(term),
-    term = fct_relevel(term, c("(Intercept)", "n_years", "age", "tanf_amt_received", "raceBlack", "raceAsian", "raceAIAN", "raceOther", "pct_unobligated", "pct_basic_assistance", "pct_pregnancy_prevention", "partyR"))
+    term = fct_relevel(term, c("(Intercept)", "n_years", "age", "I(age^2)", "tanf_amt_received", "raceBlack", "raceAsian", "raceAIAN", "raceOther", "pct_unobligated", "pct_basic_assistance", "pct_pregnancy_prevention", "partyR", "is_covid"))
   ) |>
   arrange(term) |>
-  mutate(
-    conf.low_or = substr(as.character(conf.low_or), 1, 5),
-    conf.high_or = substr(as.character(conf.high_or), 1, 5),
+ mutate(
+    conf.high_or = as.character(format(conf.high_or, digits = 3, scientific = F)),
+    conf.low_or = as.character(format(conf.low_or, digits = 3, , scientific = F)),
+    #conf.low_or = substr(as.character(conf.low_or), 1, 5),
+    #conf.high_or = substr(as.character(conf.high_or), 1, 5),
     cred_interval = paste0("(", conf.low_or, ", ", conf.high_or, ")")) |>
+  mutate(
+    cred_interval = str_replace(cred_interval, "\\( ", "\\(")
+    ) |>
   select(-c(conf.low_or, conf.high_or)) |>
   mutate(
   term = as.character(term),
   term = case_match(
     term,
     "(Intercept)" ~ "Global Intercept",
-    "tanf_amt_received" ~ "Amount of TANF Cash Assistance Received (in hundreds of dollars)",
+    "tanf_amt_received" ~ "Amount of TANF Cash Assistance Received",
     "n_years" ~ "Number of years in sample",
     "age" ~ "Age of person",
-    "raceBlack" ~ "Race of householder: Black",
-    "raceAsian" ~ "Race of householder: Asian",
-    "raceAIAN" ~ "Race of householder: AIAN",
-    "raceOther" ~ "Race of householder: Other race",
-    "pct_unobligated" ~ "Percent of TANF funds unobligated by state in cohort year",
-    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance for state and cohort year",
-    "pct_pregnancy_prevention" ~ "Percent of TANF expenditures on pregnancy prevention programs for state and cohort year",
-    "partyR" ~ "Governor of state in cohort year is Republican"
+    "I(age^2)" ~ "Age of person (squared)",
+    "raceBlack" ~ "Race: Black",
+    "raceAsian" ~ "Race: Asian",
+    "raceAIAN" ~ "Race: AIAN",
+    "raceOther" ~ "Race: Other race",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance",
+    "pct_pregnancy_prevention" ~ "Percent of TANF expenditures on pregnancy prevention programs",
+    "partyR" ~ "Governor of state in cohort year is Republican",
+    "is_covid" ~ "Cohort year is 2020 or later"
   )) |>
   gt(rowname_col = "term") |>
   fmt_number(decimals = 3) |>
   tab_stubhead(label = md("**Term**")) |>
   cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
-  cols_width(stub() ~ px(250),
-             starts_with("odd") ~ px(150)) |>
-  tab_options(table.font.size = 14,
-              table.width = 600) |>
-  tab_header(md("**Table 2. Posterior Estimates for Achievement of TANF Goal 2**")) |>
+  tab_options(table.font.size = 16,table.width = px(800), data_row.padding = px(5)) |>
+  cols_width(stub() ~ pct(45)) |>
+   #          starts_with("odd") ~ pct(33)) |>
+  #tab_options(table.font.size = 12, table.width = 600) |>
   cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
-  opt_table_font(font = "Times New Roman") |>
+  opt_table_font(font = system_fonts("old-style")) |>
   opt_align_table_header(align = "left") |>
   tab_footnote(
-    footnote = "Categorical variable (yes = 1, no = 0)",
-    locations = cells_stub(rows = c("Race of householder: Black", "Race of householder: Asian", "Race of householder: Other race", "Governor of state in cohort year is Republican", "Cohort year is 2020 or later"
+    footnote = "categorical variable (yes = 1, no = 0)",
+    locations = cells_stub(rows = c("Race: Black", "Race: Asian", "Race: Other race", "Governor of state in cohort year is Republican", "Cohort year is 2020 or later"
     ))
-  )
+  ) |>
+  tab_footnote(
+    footnote = "in hundreds of dollars",
+    locations = cells_stub(rows = c("Amount of TANF Cash Assistance Received"))
+  ) |>
+  tab_footnote(
+    footnote = "for state and cohort year",
+    locations = cells_stub(rows = c("Percent of TANF funds unobligated", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on pregnancy prevention programs"))
+  ) |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_body(rows = c("Number of years in sample", "Age of person", "Age of person (squared)", "Amount of TANF Cash Assistance Received", "Race: Black", "Cohort year is 2020 or later"))) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+
+
+summary(goal3_fit)
+
+gtsave(goal3_data, "images/goal3_data.png")
+gtsave(goal3_results, "images/goal3_results.png")
+goal3_results
 ```
 
 # Goal 4
@@ -279,13 +394,93 @@ goal4 |>
 ```{r}
 #| label: display-goal-4-results
 
-tidy(goal4_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+goal4_data <- goal4 |>
+  mutate(goal4 = if_else(goal4 == 1, "Yes", "No")) |>
+  tbl_summary(by = goal4, include = c(race, sex), missing = "no", label = list(race = "Race of householder", sex = "Sex of householder")) |>
+  modify_header(label = "**Achieved Goal 4**") |>
+  as_gt() |>
+  opt_table_font(font = system_fonts("old-style")) |>
+  tab_options(table.font.size = 16,table.width = px(600), data_row.padding = px(5)) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+
+goal4_tidy <- tidy(goal4_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or)
+
+goal4_tex <- goal4_tidy |>
+  gt()
+
+gtsave(goal4_data, "images/goal4_data.png")
+
+goal4_results <- tidy(goal4_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
   mutate(odd_ratio = exp(estimate),
          conf.low_or = exp(conf.low),
          conf.high_or = exp(conf.high)
          ) |>
   select(term, odd_ratio, conf.low_or, conf.high_or) |>
-  kable(digits = 3)
+  mutate(
+    term = factor(term),
+    term = fct_relevel(term, c("(Intercept)", "tanf_amt_received", "n_years", "raceBlack", "raceAsian", "raceAIAN", "raceOther", "sexMale", "pct_unobligated", "pct_basic_assistance", "pct_fatherhood_programs", "partyR"))
+  ) |>
+  arrange(term) |>
+  mutate(
+    conf.low_or = substr(as.character(conf.low_or), 1, 5),
+    conf.high_or = substr(as.character(conf.high_or), 1, 5),
+    cred_interval = paste0("(", conf.low_or, ", ", conf.high_or, ")")) |>
+  select(-c(conf.low_or, conf.high_or)) |>
+  mutate(
+  term = as.character(term),
+  term = case_match(
+    term,
+    "(Intercept)" ~ "Global Intercept",
+    "tanf_amt_received" ~ "Amount of TANF cash assistance received",
+    "n_years" ~ "Number of years in sample",
+    "raceBlack" ~ "Race: Black",
+    "raceAsian" ~ "Race: Asian",
+    "raceAIAN" ~ "Race: AIAN",
+    "raceOther" ~ "Race: Other race",
+    "sexMale" ~ "Householder is male",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance",
+    "pct_fatherhood_programs" ~ "Percent of TANF expenditures on fatherhood programs",
+    "partyR" ~ "Governor of state in cohort year is Republican"
+  )) |>
+  gt(rowname_col = "term") |>
+  fmt_number(decimals = 3) |>
+  tab_stubhead(label = md("**Term**")) |>
+  cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
+  tab_options(table.font.size = 16,table.width = px(800), data_row.padding = px(5)) |>
+  cols_width(stub() ~ pct(45)) |>
+   #          starts_with("odd") ~ pct(33)) |>
+  #tab_options(table.font.size = 12, table.width = 600) |>
+  cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
+  opt_table_font(font = system_fonts("old-style")) |>
+  opt_align_table_header(align = "left") |>
+  tab_footnote(
+    footnote = "categorical variable (yes = 1, no = 0)",
+    locations = cells_stub(rows = c("Race: Black", "Race: Asian", "Race: Other race", "Governor of state in cohort year is Republican","Householder is male"
+    ))
+  ) |>
+  tab_footnote(
+    footnote = "in hundreds of dollars",
+    locations = cells_stub(rows = c("Amount of TANF cash assistance received"))
+  ) |>
+  tab_footnote(
+    footnote = "for state and cohort year",
+    locations = cells_stub(rows = c("Percent of TANF funds unobligated", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on fatherhood programs"))
+  ) |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_body(rows = c("Global Intercept", "Amount of TANF cash assistance received", "Number of years in sample", "Race: Black", "Race: Asian", "Householder is male", "Percent of TANF expenditures on fatherhood programs", "Governor of state in cohort year is Republican"))) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+
+gtsave(goal4_results, "images/goal4_results.png")
+goal4_results
 ```
 
 **Next steps:**

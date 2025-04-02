@@ -306,7 +306,8 @@ children <- children |>
   left_join(children_lookup,
             by = join_by("pnum" == "child_pnum", year, monthcode, ssuid)) |>
   select(year, monthcode, ssuid, pnum, goal1, goal1_lookup) |>
-  mutate(goal1 = if_else(goal1 == 2, goal1_lookup, goal1))
+  mutate(goal1 = if_else(goal1 == 2, goal1_lookup, goal1)) |>
+  mutate(household_id = as.numeric(ssuid))
 
 # evaluates whether tanf goal 1 is achieved for a household in a given year and month
 hh_goal1 <- children |>
@@ -319,7 +320,63 @@ hh_goal1 <- children |>
   mutate(hh_month_goal1 = if_else(avg_goal1 != 1, 0, 1)) |>
   select(-avg_goal1)
 
+child_goal1 <- children |>
+  # group by year, monthj, person, and household
+  group_by(ssuid, pnum) |>
+  # determine average (over all years in sample)
+  # achievement of goal 1
+  summarise(avg_goal1 = mean(goal1, na.rm = TRUE), .groups = "drop") |>
+  # if goal1 = 0 for any year, goal1 is not achieved
+  mutate(child_goal1 = if_else(avg_goal1 != 1, 0, 1)) |>
+  select(-avg_goal1)
+
 filter(hh_goal1, is.na(hh_month_goal1))
+```
+
+```{r}
+#| label: secondary-goal1-data-editing
+
+# 1. children dataset - get child level variables that are relevant (age, race, sex)
+# 2. match to sipp all goals at the person level - create dataset where each row is a child, aggregating the goal 1 variable for all fiscal years, then rerun model
+
+# create race of householder variables and goal1 variable
+
+
+goal1 <- sipp_all_goals |>
+  filter(age < 18) |>
+  select(household_id, pnum, race, sex, age, state, year, fiscal_year, month, pct_unobligated, pct_basic_assistance, pct_fatherhood_programs, pct_child_welfare, pct_foster, party) |>
+  mutate(
+    race = factor(race),
+    race = fct_collapse(
+      race,
+      "White" = c("White"),
+      "Black" = c("Black", "Black-AIAN", "White-Black"),
+      "AIAN" = c("AIAN", "White-AIAN"),
+      "Asian" = c("Asian", "White-Asian"),
+      "Other" = c("Other", "HP")
+    ),
+   race = fct_relevel(race, c("White", "Black", "Asian", "AIAN", "Other"))
+  ) |>
+  left_join(children, by = join_by("year", "month" == "monthcode", "household_id", "pnum")) |>
+  group_by(household_id, pnum, state) |>
+  filter(
+    fiscal_year == min(fiscal_year)
+    ) |>
+  ungroup() |>
+  distinct() |>
+  group_by(household_id, pnum, race, sex, state, fiscal_year, pct_unobligated, pct_basic_assistance, pct_fatherhood_programs, pct_child_welfare, pct_foster, party) |>
+  summarize(age = median(age), goal1 = min(goal1, na.rm = TRUE), .groups = "drop") |>
+  mutate(
+    pct_unobligated = pct_unobligated*100,
+    pct_basic_assistance = pct_basic_assistance*100,
+    pct_fatherhood_programs = pct_fatherhood_programs*100,
+    pct_foster = pct_foster*100,
+    pct_child_welfare = pct_child_welfare*100
+  ) |>
+  # add covid indicator 
+  mutate(is_covid = if_else(fiscal_year >= 2020, 1, 0))
+
+saveRDS(goal1, "data/goal1.rds")
 ```
 
 # **Creating Variables for Achievement of TANF Goal 2**
@@ -892,16 +949,15 @@ state_tbl1 <- sipp_all_goals |>
     columns = "label",
     rows = (variable == "total_expenditures") & row_type == "label"
   ) |>
-      as_gt() |>
-      tab_header(md("**Table 1. State-level Characteristics for 50 States and District of Columbia**")) |>
-  tab_options(table.font.size = 14,
-              table.width = 700) |>
+  as_gt() |>
+  tab_options(table.font.size = 16,table.width = px(800), data_row.padding = px(5)) |>
   opt_table_font(font = "Times New Roman") |>
   opt_align_table_header(align = "left") |>
+  opt_table_font(font = system_fonts("old-style")) |>
   cols_width(starts_with("label") ~ px(120)) |>
   fmt_number(decimals = 1)
   
   
-gtsave(state_tbl1, "images/state_tbl1.html")
+gtsave(state_tbl1, "images/state_tbl1.png")
 
 ```

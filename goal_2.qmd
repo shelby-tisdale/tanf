@@ -575,7 +575,7 @@ goal2_test <- testing(goal2_split)
 # tune prior
 goal_2_model_4_prior <- stan_glmer(
   goal2 ~ pct_unobligated + pct_basic_assistance + pct_work_ed + received_job_training*hh_employed +
-    tanf_received + n_years + hh_marriage + hh_employed + is_covid +  party + race + ethnicity + (1 | fiscal_year) + (1 | state),
+    tanf_received + n_years + hh_marriage + hh_employed + is_covid +  party + race + (1 | fiscal_year) + (1 | state),
   data = goal2_train, family = binomial,
     # ln(1 -.74 /.74)
   prior_intercept = normal(-1.05, 1.5, autoscale = TRUE),
@@ -643,6 +643,7 @@ goal2_class_summary <- classification_summary(
 # sensitivity: of the households that do meet goal4, model correctly classifies 55 percent.
 # a total 68 percent of households are correctly classified by this model.
 goal2_class_summary$confusion_matrix
+
 goal2_class_summary$accuracy_rates
 
 pp_check(goal_2_model_4, plotfun = "stat", stat = "prop_goal2", seed = 812, nreps = 100) +
@@ -650,3 +651,72 @@ pp_check(goal_2_model_4, plotfun = "stat", stat = "prop_goal2", seed = 812, nrep
 ```
 
 -   recode TANF received to first year only
+
+```{r}
+#| label: roc-curve
+
+library(pROC)
+
+# Assuming your fitted model is named 'bayes_model' and your test data is 'test_data'
+# Generate predicted probabilities
+pred_probs <- posterior_epred(goal2_fit, newdata = goal2_test)
+
+# Obtain the mean predicted probability for each observation
+mean_pred_probs <- apply(pred_probs, 2, mean)
+
+goal2_test <- goal2_test |> drop_na()
+true_labels <- goal2_test$goal2
+roc_obj <- roc(true_labels, mean_pred_probs)
+
+# Plot ROC curve
+plot(roc_obj, main = "ROC Curve for TANF Goal 2 Model (AUC = 0.650)", col = "blue", lwd = 2)
+
+# Plot ROC curve with ggplot
+ggplot(roc_data, aes(x = FPR, y = TPR)) +
+  geom_line(color = "blue", size = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red")  # Add diagonal line
+
+# Compute AUC
+auc_value <- auc(roc_obj)
+print(paste("Area Under the Curve (AUC):", auc_value))
+
+
+goal3_test <- goal3_test |> drop_na()
+# Assuming your fitted model is named 'bayes_model' and your test data is 'test_data'
+# Generate predicted probabilities
+pred_probs <- posterior_epred(goal3_fit, newdata = goal3_test |> drop_na())
+
+# Obtain the mean predicted probability for each observation
+mean_pred_probs <- apply(pred_probs, 2, mean)
+
+goal3_test <- goal3_test |> drop_na()
+true_labels <- goal3_test$goal3
+roc_obj <- roc(true_labels, mean_pred_probs)
+
+# Plot ROC curve
+plot(roc_obj, main = "ROC Curve for TANF Goal 3 Model (AUC = 0.835)", col = "blue", lwd = 2)
+
+# Compute AUC
+auc_value <- auc(roc_obj)
+print(paste("Area Under the Curve (AUC):", auc_value))
+
+
+goal4_test <- goal4_test |> drop_na()
+# Assuming your fitted model is named 'bayes_model' and your test data is 'test_data'
+# Generate predicted probabilities
+pred_probs <- posterior_epred(goal4_fit, newdata = goal4_test)
+
+# Obtain the mean predicted probability for each observation
+mean_pred_probs <- apply(pred_probs, 2, mean)
+
+goal4_test <- goal4_test |> drop_na()
+true_labels <- goal4_test$goal4
+roc_obj <- roc(true_labels, mean_pred_probs)
+
+# Plot ROC curve
+plot(roc_obj, main = "ROC Curve for TANF Goal 4 Model (AUC = 0.745)", col = "blue", lwd = 2)
+
+# Compute AUC
+auc_value <- auc(roc_obj)
+print(paste("Area Under the Curve (AUC):", auc_value))
+```
