@@ -1,0 +1,1036 @@
+---
+title: "A Bayesian Hierarchical Approach to Predicting Fulfillment of TANF Purposes"
+author: "Shelby Tisdale"
+echo: false
+message: false
+warning: false
+scrollable: true
+format:
+  revealjs: 
+    theme: [theme.scss]
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+```{r}
+#| label: load-packages
+library(tidyverse)
+library(kableExtra)
+library(broom.mixed)
+library(gt)
+library(gtsummary)
+library(patchwork)
+library(tidyverse)
+library(geojsonio)
+library(RColorBrewer)
+library(maps)
+library(mapdata)
+library(extrafont)
+library(colorspace)
+library(scales)
+library(geojsonio)
+library(RColorBrewer)
+library(broom)
+library(sf)
+```
+
+```{r}
+#| label: load-data
+#| cache: true
+
+# main datasets
+all_goals <- read_csv("data/sipp_all_goals.csv")
+tanf <- read_csv("data/total_expenditures_2015_2022.csv")
+
+# goal-specific data
+goal1 <- read_rds("data/goal1.rds")
+goal2 <- read_rds("data/goal2.rds")
+goal3 <- read_rds("data/goal3.rds")
+goal4 <- read_rds("data/goal4.rds")
+
+# final models
+goal1_fit <- read_rds("data/goal1_model2.rds")
+goal2_fit <- read_rds("data/goal2_model4.rds")
+goal3_fit <- read_rds("data/goal_3_model_2.rds")
+goal4_fit <- read_rds("data/goal_4_model_1.rds")
+```
+
+# Background
+
+## A Brief Overview of TANF Policy
+
+-   Personal Responsibility and Work Opportunity Reconcilitation Act of
+    1996 (PWRORA).
+-   Temporary Assistance for Needy Families (TANF) designed to fund
+    services and provide direct cash assistance to low-income families
+    with children in the U.S.
+-   \$16.5 billion in federal funds annually (has not changed since
+    1996, losing 40 percent of its value)
+-   Funds provided to states as block grants
+    -   states can use funds as they wish, as long as spending aligns
+        with one of TANF's four purposes
+
+## The Mississippi Welfare Scandal
+
+-   up to \$94 million in TANF block grant funds misappropriated by
+    Mississippi Department of Health and Human Services.
+-   highlights need for further analysis of how TANF block grant funds
+    are being used.
+
+![](images/CHILDPOL495%20Slideshow.png){fig-align="center" width="462"}
+
+## Unobligated Funds
+
+-   States can reserve unused TANF funds without time limit.
+-   Every year, states accumulate **unobligated** balances: funds that
+    have neither been spent or obligated toward a specific purpose.
+
+```{r}
+#| label: build-hexbin-1
+#| output: false
+
+expenditures_bar2 <- tanf |>
+  filter(fiscal_year %in% c(2017:2022)) |>
+  group_by(state) |>
+  summarize(
+    mean_unobligated = mean(
+      unobligated_balance/(funds_awarded + carryover + fed_unliquidated))) |>
+  ungroup() |>
+  mutate(state = fct_rev(state))
+
+us_hexbin <- st_read("old files/us_states_hexgrid.geojson") |>
+  mutate(google_name = toupper(
+    str_remove(google_name, " \\(United States\\)"))) |>
+  mutate(google_name = if_else(
+    google_name == "DISTRICT OF COLUMBIA", "DIST.OF COLUMBIA", google_name)) |>
+  left_join(expenditures_bar2, join_by(google_name == state))
+
+hexbin_unobligated <- ggplot(us_hexbin) +
+  geom_sf(aes(fill = mean_unobligated), color = "white", linewidth = .5) +
+  geom_sf_text(aes(label = iso3166_2), color = "black", size = 5) +
+  theme_void(base_size = 16) +
+  scale_fill_distiller(
+    direction = 1,
+    palette = 5,
+    limits = c(0,1),
+    labels = percent,
+    guide = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
+  theme(legend.position = "top",
+        plot.title = element_text(size = 16, face = "bold",  hjust = 0.5),
+        plot.subtitle = element_text(size = 12,  hjust = 0.5),
+        panel.background = element_rect(fill = "white", color = "white"),
+        plot.background = element_rect(fill = "white", color = "white"),
+        legend.key.width= unit(1.5, 'cm'),
+        legend.key.height= unit(.5, 'cm'),
+        legend.title = element_text(size = 20),
+        strip.background = element_rect(fill = "white", color = "white")) +
+  labs(fill = "Average percent of TANF funds unobligated (2017-2022)",
+       #title = "Average Percent Unobligated TANF Funds by State",
+       #subtitle = "Fiscal years 2017-2022"
+       )
+```
+
+```{r}
+#| label: display-hexbin-1
+hexbin_unobligated
+```
+
+## Direct Cash Assistance
+
+-   Floyd and Pavetti (Center for Budget and Policy Priorities, 2022)
+    note that:
+
+    -   TANF provides less cash assistance than its predecessor, Aid to
+        Families with Dependent Children (AFDC).
+
+    -   Deep poverty in the U.S. has increased among children in
+        single-mother families, accompanying the decline in direct cash
+        assistance.
+
+-   Research by Shaefer, Edin, Fusaro and Wu has shown:
+
+    -   strong relationship between TANF caseload reduction and
+        increased student homelessness and food insecurity for
+        single-mother families.
+
+    -   In-kind aid from TANF-funded programs often benefits families
+        who are not experiencing poverty; cash assistance goes directly
+        to low-income families.
+
+## Direct Cash Assistance
+
+```{r}
+#| label: build-hexbin-2
+#| output: false
+
+expenditures_bar3 <- tanf |>
+  group_by(state) |>
+  summarize(mean_direct_assistance = mean(basic_assistance / total_expenditures)) |>
+  ungroup() |>
+  mutate(state = fct_rev(state))
+
+us_hexbin2 <- st_read("old files/us_states_hexgrid.geojson") |>
+  mutate(google_name = toupper(str_remove(google_name, " \\(United States\\)"))) |>
+  mutate(google_name = if_else(google_name == "DISTRICT OF COLUMBIA", "DIST.OF COLUMBIA", google_name)) |>
+  left_join(expenditures_bar3, join_by(google_name == state))
+
+
+ggplot(us_hexbin2) +
+  geom_sf(aes(fill = mean_direct_assistance), color = "white", linewidth = .5) +
+  geom_sf_text(aes(label = iso3166_2), color = "black") +
+  theme_void() +
+  scale_fill_distiller(direction = 1, palette = 1, limits = c(0,1), labels = percent) +
+  #guides(fill = guide_legend(title = NULL, reverse = T, override.aes = list(size = 4))) +
+  theme(text = element_text(family = "Lexend"),
+        legend.position = "top",
+        plot.title = element_text(face = "bold",  hjust = 0.5)) +
+  labs(fill = "Mean Percent Direct Assistance",
+       title = "Average Percent TANF Funds Spent on Direct Cash Assistance by State")
+
+hexbin_cash_assist <- ggplot(us_hexbin2) +
+  geom_sf(aes(fill = mean_direct_assistance), color = "white", linewidth = .5) +
+  geom_sf_text(aes(label = iso3166_2), color = "black", size = 5) +
+  theme_void(base_size = 16) +
+  scale_fill_distiller(direction = 1, palette = 1, limits = c(0,1), labels = percent, guide = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
+  theme(legend.position = "top",
+        plot.title = element_text(size = 16, face = "bold",  hjust = 0.5),
+        plot.subtitle = element_text(size = 12,  hjust = 0.5),
+        panel.background = element_rect(fill = "white", color = "white"),
+        plot.background = element_rect(fill = "white", color = "white"),
+        legend.key.width= unit(1.5, 'cm'),
+        legend.key.height= unit(.5, 'cm'),
+        legend.title = element_text(size = 20),
+        strip.background = element_rect(fill = "white", color = "white")) +
+  labs(fill = "Average percent of TANF expeditures on basic assistance",
+       #title = "Average Percent Unobligated TANF Funds by State",
+       #subtitle = "Fiscal years 2017-2022"
+       )
+```
+
+```{r}
+#| label: display-hexbin-2
+
+hexbin_cash_assist
+```
+
+## TANF Spending for Selected States (2017-2022)
+
+```{r}
+expenditures_bar4 <- tanf |>
+  filter(fiscal_year %in% c(2017:2022)) |>
+  mutate(services = other_assistance + non_assistance + work_ed + early_ed +
+           financial_ed + eitc_refundable + non_eitc_refundable +
+           short_term_benefits + support__services + children_youth_services +
+           pregnancy_prevention + fatherhood_programs + child_welfare +
+           home_visiting + program_mgmt + other,
+         total = services + basic_assistance + unobligated_balance,
+         unob = unobligated_balance) |>
+  select(state, fiscal_year, basic_assistance, services, unobligated_balance, total, unob) |>
+  pivot_longer(cols = c(basic_assistance:unobligated_balance),
+               names_to = "category",
+               values_to = "amount")  |>
+  group_by(state, category) |>
+  summarize(amount = mean(amount),
+            total = mean(total),
+            unob = mean(unob),
+            .groups = "drop") |>
+  mutate(pct_unob = unob/total) |>
+  mutate(state = fct_reorder(state, pct_unob))
+
+expenditures_bar4 |>
+  filter(state %in% c("U.S. TOTAL", "TENNESSEE", "MISSISSIPPI", "ARKANSAS", "KENTUCKY", "TEXAS", "NEW YORK", "CALIFORNIA", "FLORIDA", "NORTH CAROLINA")) |>
+  mutate(state = case_match(
+    state,
+    "TENNESSEE" ~ "TN",
+    "U.S. TOTAL" ~ "US",
+    "MISSISSIPPI" ~ "MS",
+    "ARKANSAS" ~ "AR",
+    "KENTUCKY" ~ "KY",
+    "TEXAS" ~ "TX",
+    "NEW YORK" ~ "NY",
+    "CALIFORNIA" ~ "CA",
+    "FLORIDA" ~ "FL",
+    "NORTH CAROLINA" ~ "NC"
+  )) |>
+  mutate(category = case_match(
+    category,
+    "basic_assistance" ~ "Basic Assistance",
+    "services" ~ "Programs & Services",
+    "unobligated_balance" ~ "Unobligated Balance"
+  )) |>
+  mutate(
+    state = if_else(state == "US", "**U.S.**", state),
+         state = fct_reorder(state, pct_unob)) |>
+  ggplot(aes(y = state)) +
+  geom_col(aes(x = amount, fill = category), position = "fill") +
+  geom_vline(xintercept = c(.25, .5, .75), color = "white", linetype = "dotted", linewidth = 1) + 
+  scale_x_continuous(expand = c(0,0), labels = percent) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_minimal(base_size = 16) +
+  theme(legend.position = "top",
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.background = element_rect(fill = "white", color = "white"),
+        axis.text.y = ggtext::element_markdown(color = "black"),
+        panel.background = element_rect(fill = "white", color = "white"),
+        panel.border = element_blank(),
+        legend.key.size = unit(.25, 'cm')) +
+  coord_cartesian(clip = "off") +
+  guides(fill = guide_legend(title.position = "top", title.hjust = 0.5, reverse = TRUE)) + 
+  labs(x = "Percent of available TANF funds",
+       y = NULL,
+       fill = "Spending Category")
+```
+
+## The Four Purposes of TANF
+
+1.  Provide assistance to needy families so that children can be cared
+    for in their own homes or in the homes of relatives.
+2.  End the dependence of needy parents on government benefits by
+    promoting job preparation, work, and marriage.
+3.  Prevent and reduce the incidence of out-of-wedlock pregnancies.
+4.  Encourage the formation and maintenance of two-parent families.
+
+**Source**: Office of Family Assistance, Administration for Children and
+Families, 2024
+
+## Objectives
+
+::: {style="font-size: 120%;"}
+
+#### **While many studies evaluate TANF with respect to outcomes related to poverty and child well-being, few studies examine the four purposes TANF is designed to fulfill.**
+
+In this study, we aim to:
+
+-   Examine the relationship between state-level TANF spending and
+    household-level fulfillment of the **four purposes of TANF**.
+    -   Specifically examine how state-level spending on **direct cash
+        assistance** and **unobligated funds** relate to household-level
+        outcomes
+:::
+
+# Data
+
+## Survey of Income and Program Participation (SIPP)
+
+-   Nationally representative, longitudinal survey administered by the
+    U.S. Census Bureau
+-   Household-level data on employment, family characteristics, and
+    participation in government and social programs.
+-   Data from panels 2018-2022, corresponding to years 2017-2021.
+-   **Sample limited to households with children below the federal
+    poverty line.**
+-   SIPP data recoded to the fiscal year to match TANF expenditures
+    data.
+-   **Householders:** ”the person in whose name the housing unit is
+    owned or rented (maintained) or, if there is no such person, an
+    adult member”
+-   **Cohort years:** first fiscal year within the 2017-2022 reference
+    period that the observation, either a household or an individual,
+    was present in the SIPP.
+    -   Allowed for the models to incorporate year-level TANF financial
+        data for each state, which varied from year-to-year, without
+        having a longitudinal response variable.
+
+**Source:** U.S. Census Bureau, SIPP User's Guide
+
+## TANF Federal Expenditures
+
+-   Combined TANF and maintenance-of-effort (MOE) expenditures for all
+    50 states and Washington, D.C.
+-   20 primary spending categories, along with **total awarded funds,**
+    **unobligated funds**, and **carryover funds.**
+    -   **carryover funds:** unobligated funds from the previous fiscal
+        year, reserved for future use.
+
+**Source:** Administration for Children and Families
+
+## Political Data
+
+-   Data from Wikipedia indicating the political party of a state's
+    governor for the year. (Democrat or Republican)
+-   Used to control for potential political influence on welfare policy.
+
+**Source:** Wikipedia
+
+# Analysis
+
+## Methods
+
+For each goal, we:
+
+1.  Used data from the SIPP to create a binary indicator for whether the
+    goal was "achieved" for a person or household.
+2.  Estimated a three-level Bayesian hierarchical logistic regression
+    model with random-intercepts using MCMC sampling via the `rstanarm`
+    package.
+3.  Assessed mixing and stability across parallel chains with trace
+    plots, autocorrelation plots, effective sample size ratios, R-hat
+    ratios.
+4.  Performed classification analysis with testing data and assessed fit
+    by calculating area under the ROC curve
+
+## Bayesian Hierarchical Logistic Regression
+
+**Advantages**
+
+-   Incorporate prior knowledge on family-level outcomes into models.
+-   Account for within- and between-group variability at each level of
+    the hierarchy.
+
+**Model**
+
+$$  \log{(\frac{\pi_{ijk}}{1-\pi_{ijk}})} = (\beta_{0} + b_{0j} + p_{0k})  + \sum_{n=1}^m\beta_{n_\text{I}}X_{ijkn} +  \sum_{n = m+1}^{p}\beta_{n_\text{I}}X_{jkn} $$
+
+$$ Y_{ijk} = \begin{cases} 1 & \text{purpose fulfilled for observation $i$ in cohort year $j$ and state $k$} \\
+0 & \text{purpose not fulfilled for observation $i$ in cohort year $j$ and state $k$} \end{cases} $$
+
+$$Y_{ijk} | \beta_{0}, b_{0j}, p_{0k}, \beta_{1},...,\beta_{p} \sim \text{Bernoulli}(\pi_{ijk})$$
+
+::::: columns
+::: {.column width="50%"}
+-   $\pi_{ijk}$ is the probability that child or household $i$ in cohort
+    year $j$ and state $k$ fulfills the purpose.
+
+-   $\beta_{0}$ is the global intercept
+
+-   $b_{0j}$ is the year-specific adjustment to the intercept for cohort
+    year $j$
+
+-   $p_{0k}$ is the state-specific adjustment to the intercept for state
+    $k$
+:::
+
+::: {.column width="50%"}
+**Weakly informative priors:**
+
+-   $b_{0j} \sim \text{N}(0, \sigma_b)$
+-   $p_{0k} \sim \text{N}(0, \sigma_p)$
+-   $\sigma_b, \sigma_p \sim \text{Exp}(1)$
+-   $\beta_{1}, \dots, \beta_{p} \sim \text{N}(0, 2.5^2)$
+:::
+:::::
+
+## TANF Purpose 1: Data
+
+#### **Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.**
+
+::::: columns
+::: {.column width="40%"}
+**Subsample:**
+
+all children in SIPP sample (for all months where child has age \< 18)
+
+**Criteria:**
+
+-   Purpose 1 is "achieved" (`purpose = 1`) for a child if, for every
+    month they are present in the sample, they lived with at least one
+    parent (biological, step, or adoptive), adult sibling, or other
+    relative.
+-   Otherwise, Purpose 1 is "not achieved" (`purpose1 = 0`)
+
+**Global Prior:**
+
+$$\beta_{0_\text{I}} \sim N(5.81, 1.5^2)$$
+
+Based on data from the Annie E. Casey Foundation: In 2021, children
+entered foster care at a rate of 3 per 1,000.
+:::
+
+::: {.column width="60%"}
+```{r}
+#| label: display-goal-1-data
+goal1 |>
+  mutate(goal1 = if_else(goal1 == 1, "Yes", "No")) |>
+  tbl_summary(
+    by = goal1,
+    include = c(race, sex, age),
+    missing = "no",
+    label = list(
+      race = "Race of child",
+      sex = "Sex of child",
+      age = "Age of child")) |>
+  modify_header(label = "**Achieved Purpose 1**") |>
+  as_gt() |>
+  cols_width(label ~ pct(35)) |>
+  tab_options(
+    table.font.size = 20,
+    table.width = px(500),
+    data_row.padding = px(5)) |>
+  tab_style(
+    style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(
+    style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(
+    style = list(cell_text(color = "black")), locations = cells_stubhead())
+```
+:::
+:::::
+
+## TANF Purpose 1: Model
+
+#### **Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.**
+
+![](images/Goal1_Hierarchy%20(1).png)
+
+-   **Outcome:** Purpose 1 achievement
+-   **Child-level predictors:** Race, Sex
+-   **State-year level predictors:** Percent of TANF funds unobligated,
+    Percent of TANF expenditures on fatherhood programs, foster care,
+    basic assistance, and child welfare; political party of governor;
+    whether year is during covid
+
+## TANF Purpose 1: Results
+
+#### **Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.**
+
+#### AUC: 0.674
+
+```{r}
+#| label: goal-1-results
+
+tidy(goal1_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or) |>
+  mutate(
+    term = factor(term),
+    term = fct_relevel(term, c("(Intercept)", "raceBlack", "sexMale", "age", "pct_unobligated", "pct_basic_assistance", "pct_fatherhood_programs", "pct_foster", "pct_child_welfare", "partyR", "is_covid"))
+  ) |>
+  arrange(term) |>
+  mutate(
+    conf.high_or = as.character(format(conf.high_or, digits = 3, scientific = F)),
+    conf.low_or = as.character(format(conf.low_or, digits = 3, , scientific = F)),
+    #conf.low_or = substr(as.character(conf.low_or), 1, 5),
+    #conf.high_or = substr(as.character(conf.high_or), 1, 5),
+    cred_interval = paste0("(", conf.low_or, ", ", conf.high_or, ")")) |>
+  mutate(
+    cred_interval = str_replace(cred_interval, "\\( ", "\\(")
+    ) |>
+  select(-c(conf.low_or, conf.high_or)) |>
+  mutate(
+  term = as.character(term),
+  term = case_match(
+    term,
+    "(Intercept)" ~ "Global Intercept",
+    "raceBlack" ~ "Race of child: Black",
+    "age" ~ "Age of child",
+    "sexMale" ~ "Child is male",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance",
+    "pct_child_welfare" ~ "Percent of TANF expenditures on child welfare programs",
+    "pct_fatherhood_programs" ~ "Percent of TANF expenditures on fatherhood programs",
+    "pct_foster" ~ "Percent of TANF expenditures on foster care services and maintenance payments",
+    "partyR" ~ "Governor of state in year is Republican",
+    "is_covid" ~ "Year is 2020 or later"
+  )) |>
+  gt(rowname_col = "term") |>
+  fmt_number(decimals = 3) |>
+  tab_stubhead(label = md("**Term**")) |>
+  cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
+  tab_options(table.font.size = 18,table.width = px(1000), data_row.padding = px(5)) |>
+  cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
+  opt_align_table_header(align = "left") |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_body(rows = c("Age of child", "Percent of TANF expenditures on fatherhood programs", "Governor of state in year is Republican"))) |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_stub(rows = c("Age of child", "Percent of TANF expenditures on fatherhood programs", "Governor of state in year is Republican"))) |>
+  tab_footnote(
+    footnote = "categorical variable (yes = 1, no = 0)",
+    locations = cells_stub(rows = c("Race of child: Black", "Child is male", "Governor of state in year is Republican", "Year is 2020 or later"
+    ))
+  ) |>
+  tab_footnote(
+    footnote = "for state and cohort year",
+    locations = cells_stub(rows = c("Percent of TANF funds unobligated", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on fatherhood programs", "Percent of TANF expenditures on child welfare programs", "Percent of TANF expenditures on foster care services and maintenance payments"))
+  ) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+```
+
+## TANF Purpose 2: Data
+
+#### **End the dependence of needy parents on government benefits by promoting job preparation, work, and marriage.**
+
+::::: columns
+::: {.column width="50%"}
+**Subsample:**
+
+All households that were in the SIPP sample for more than one year and
+received any government benefits (TANF, GA, SNAP, WIC) in their earliest
+year in the sample.
+
+**Criteria:**
+
+-   Purpose 2 is "achieved" (`purpose2 = 1`) for a household that did
+    not receive benefits during its final year in the sample.
+-   Otherwise, Purpose 2 "not achieved" (`purpose2 = 0`)
+
+**Global Prior:**
+
+$$\beta_{0_\text{II}} \sim N(-1.05, 1.5^2)$$
+
+2023 analysis of social safety net program participation by Macartney
+and Ghertner: among individuals with income below 200 percent of the
+federal poverty line, 74 percent received some government benefits.
+
+**Source:** Office of the Assistant Secretary for Planning and
+Evaluation
+:::
+
+::: {.column width="50%"}
+```{r}
+#| label: display-goal-2-data
+#| message: false
+#| warning: false
+
+goal2 |>
+  mutate(goal2 = if_else(goal2 == 1, "Yes", "No")) |>
+  tbl_summary(by = goal2, include = c(hh_marriage, race, hh_employed, received_job_training), missing = "no", label = list(race = "Race", hh_marriage = "Householder is married", hh_employed = "Householder is employed", received_job_training = "Householder received job training")) |>
+  modify_header(label = "**Achieved Purpose 2**") |>
+  as_gt() |>
+  tab_options(table.font.size = 20,table.width = px(500), data_row.padding = px(5)) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+```
+:::
+:::::
+
+## TANF Purpose 2: Model
+
+#### **End the dependence of needy parents on government benefits by promoting job preparation, work, and marriage.**
+
+![](images/Goal2_Hierarchy.jpeg){fig-align="center"}
+
+-   **Outcome:** Purpose 2 achievement
+
+-   **Household-level predictors:** Householder job training;
+    Householder employment status; Household receipt of TANF cash
+    assistance; number of years in sample; Race of householder
+
+-   **State-year level predictors:** Percent unobligated TANF funds;
+    percent TANF expenditures on basic assistance; percent TANF
+    expenditures on work education; party of governor; whether year is
+    during covid
+
+-   **Considerations:** Interaction between job training and employment
+
+## TANF Purpose 2: Results
+
+#### **End the dependence of needy parents on government benefits by promoting job preparation, work, and marriage.**
+
+#### AUC: 0.650
+
+```{r}
+#| label: goal-2-results
+
+tidy(goal2_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or) |>
+  mutate(
+    term = factor(term),
+    term = fct_relevel(term, c("(Intercept)", "received_job_training", "hh_employed", "tanf_received", "n_years", "hh_marriage", "raceBlack", "raceAsian", "raceAIAN", "raceOther", "received_job_training:hh_employed", "pct_unobligated", "pct_basic_assistance", "pct_work_ed", "partyR", "is_covid"))
+  ) |>
+  arrange(term) |>
+  mutate(
+    conf.low_or = substr(as.character(conf.low_or), 1, 5),
+    conf.high_or = substr(as.character(conf.high_or), 1, 5),
+    cred_interval = paste0("(", conf.low_or, ", ", conf.high_or, ")")) |>
+  select(-c(conf.low_or, conf.high_or)) |>
+  mutate(
+  term = case_match(
+    term,
+    "(Intercept)" ~ "Global Intercept",
+    "received_job_training" ~ "Householder received job training",
+    "hh_employed" ~ "Householder employed",
+    "tanf_received" ~ "Household received TANF cash assistance",
+    "n_years" ~ "Number of years in sample",
+    "hh_marriage" ~ "Householder married",
+    "raceBlack" ~ "Race of householder: Black",
+    "raceAsian" ~ "Race of householder: Asian",
+    "raceAIAN" ~ "Race of householder: AIAN",
+    "raceOther" ~ "Race of householder: Other race",
+    "received_job_training:hh_employed" ~ "Interaction between job training and employment",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance",
+    "pct_work_ed" ~ "Percent of TANF expenditures on work education programs",
+    "partyR" ~ "Governor of state in cohort year is Republican",
+    "is_covid" ~ "Cohort year is 2020 or later"
+  )) |>
+  gt(rowname_col = "term") |>
+  fmt_number(decimals = 3) |>
+  tab_stubhead(label = md("**Term**")) |>
+  cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
+  tab_options(table.font.size = 18,table.width = px(1000), data_row.padding = px(5)) |>
+  cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
+  opt_align_table_header(align = "left") |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_body(rows = c("Global Intercept", "Householder received job training", "Householder employed", "Household received TANF cash assistance", "Number of years in sample", "Householder married", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on work education programs"))) |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_stub(rows = c("Global Intercept", "Householder received job training", "Householder employed", "Household received TANF cash assistance", "Number of years in sample", "Householder married", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on work education programs"))) |>
+  tab_footnote(
+    footnote = "categorical variable (yes = 1, no = 0)",
+    locations = cells_stub(rows = c(
+      "Householder received job training", "Householder employed", "Household received TANF cash assistance", "Race of householder: Black", "Race of householder: Asian", "Race of householder: Other race", "Interaction between job training and employment", "Governor of state in cohort year is Republican", "Cohort year is 2020 or later", "Interaction between job training and employment"
+    ))
+  ) |>
+  tab_footnote(
+    footnote = "for state and cohort year",
+    locations = cells_stub(rows = c("Percent of TANF funds unobligated", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on work education programs"))
+  ) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+
+```
+
+## TANF Purpose 3: Data
+
+#### **Prevent and reduce the incidence of out-of-wedlock pregnancies.**
+
+::::: columns
+::: {.column width="40%"}
+**Subsample:**
+
+All women in SIPP sample between ages 15 and 50, inclusive, for all
+years in which they were unmarried.
+
+**Criteria:**
+
+-   Purpose 3 is "achieved" for a woman (`purpose3 = 1`) if, during her
+    time in the sample, her number of children did not increase.
+
+-   Otherwise, Purpose 3 is "not achieved" (`purpose3 = 0`)
+
+**Global Prior:**
+
+$$\beta_{0_\text{III}} \sim N(0.38, 2.5^2)$$
+
+According to a 2015 report by Hymowitz (Manhattan Institute), 40.6
+percent of all children born in the U.S. in 2014 were born to unmarried
+mothers.
+:::
+
+::: {.column width="60%"}
+```{r}
+#| label: display-goal-3-data
+goal3 |>
+  mutate(goal3 = if_else(goal3 == 1, "Yes", "No")) |>
+  tbl_summary(by = goal3, include = c(age, race), missing = "no", label = list(age = "Age", race = "Race")) |>
+  modify_header(label = "**Achieved Purpose 3**") |>
+  as_gt() |>
+  tab_options(table.font.size = 20,table.width = px(500), data_row.padding = px(5)) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+```
+:::
+:::::
+
+## TANF Purpose 3: Model
+
+#### **Prevent and reduce the incidence of out-of-wedlock pregnancies.**
+
+![](images/Goal3_Hierarchy.jpeg){fig-align="center"}
+
+-   **Outcome:** Purpose 3 achievement
+
+-   **Person-level predictors:** Number of years in sample; age of
+    person; amount of TANF cash assistance received (in hundreds of
+    dollars); race
+
+-   **State-year level predictors:** Percent unobligated TANF funds;
+    percent TANF expenditures on basic assistance; percent TANF
+    expenditures on pregnancy prevention; party of governor; whether
+    year is during covid
+
+-   **Considerations:** Quadratic effect for age
+
+## TANF Purpose 3: Results
+
+#### **Prevent and reduce the incidence of out-of-wedlock pregnancies.**
+
+#### AUC: 0.835
+
+```{r}
+tidy(goal3_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or) |>
+  mutate(
+    term = factor(term),
+    term = fct_relevel(term, c("(Intercept)", "n_years", "age", "I(age^2)", "tanf_amt_received", "raceBlack", "raceAsian", "raceAIAN", "raceOther", "pct_unobligated", "pct_basic_assistance", "pct_pregnancy_prevention", "partyR", "is_covid"))
+  ) |>
+  arrange(term) |>
+ mutate(
+    conf.high_or = as.character(format(conf.high_or, digits = 3, scientific = F)),
+    conf.low_or = as.character(format(conf.low_or, digits = 3, , scientific = F)),
+    #conf.low_or = substr(as.character(conf.low_or), 1, 5),
+    #conf.high_or = substr(as.character(conf.high_or), 1, 5),
+    cred_interval = paste0("(", conf.low_or, ", ", conf.high_or, ")")) |>
+  mutate(
+    cred_interval = str_replace(cred_interval, "\\( ", "\\(")
+    ) |>
+  select(-c(conf.low_or, conf.high_or)) |>
+  mutate(
+  term = as.character(term),
+  term = case_match(
+    term,
+    "(Intercept)" ~ "Global Intercept",
+    "tanf_amt_received" ~ "Amount of TANF Cash Assistance Received",
+    "n_years" ~ "Number of years in sample",
+    "age" ~ "Age of person",
+    "I(age^2)" ~ "Age of person (squared)",
+    "raceBlack" ~ "Race: Black",
+    "raceAsian" ~ "Race: Asian",
+    "raceAIAN" ~ "Race: AIAN",
+    "raceOther" ~ "Race: Other race",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance",
+    "pct_pregnancy_prevention" ~ "Percent of TANF expenditures on pregnancy prevention programs",
+    "partyR" ~ "Governor of state in cohort year is Republican",
+    "is_covid" ~ "Cohort year is 2020 or later"
+  )) |>
+  gt(rowname_col = "term") |>
+  fmt_number(decimals = 3) |>
+  tab_stubhead(label = md("**Term**")) |>
+  cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
+  tab_options(table.font.size = 18,table.width = px(1000), data_row.padding = px(5)) |>
+  cols_width(stub() ~ pct(45)) |>
+   #          starts_with("odd") ~ pct(33)) |>
+  #tab_options(table.font.size = 12, table.width = 600) |>
+  cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
+  opt_align_table_header(align = "left") |>
+  tab_footnote(
+    footnote = "categorical variable (yes = 1, no = 0)",
+    locations = cells_stub(rows = c("Race: Black", "Race: Asian", "Race: Other race", "Governor of state in cohort year is Republican", "Cohort year is 2020 or later"
+    ))
+  ) |>
+  tab_footnote(
+    footnote = "in hundreds of dollars",
+    locations = cells_stub(rows = c("Amount of TANF Cash Assistance Received"))
+  ) |>
+  tab_footnote(
+    footnote = "for state and cohort year",
+    locations = cells_stub(rows = c("Percent of TANF funds unobligated", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on pregnancy prevention programs"))
+  ) |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_body(rows = c("Number of years in sample", "Age of person", "Age of person (squared)", "Amount of TANF Cash Assistance Received", "Race: Black", "Cohort year is 2020 or later"))) |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_stub(rows = c("Number of years in sample", "Age of person", "Age of person (squared)", "Amount of TANF Cash Assistance Received", "Race: Black", "Cohort year is 2020 or later"))) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+```
+
+## TANF Purpose 4: Data
+
+#### **Encourage the formation and maintenance of two-parent families.**
+
+::::: columns
+::: {.column width="50%"}
+**Subsample:**
+
+All households in the SIPP sample with at least one child and at least
+one parent (biological, step, or adoptive)
+
+**Criteria:**
+
+-   If the household includes two-parents during its initial year in the
+    sample and remains a two-parent household in the final year of the
+    sample, Purpose 4 is achieved (`purpose4 = 1`).
+
+-   If the household is a single-parent household in its first year in
+    the sample and becomes a two-parent household, Purpose 4 is achieved
+    (`purpose4 = 1`).
+
+-   Otherwise, Purpose 4 is "not achieved" (`purpose4 = 0`)
+
+**Global Prior:**
+
+$$\beta_{0_\text{IV}} \sim N(0, 2.5^2)$$ Research from Child Trends by
+Wildsmith and Alivra-Hammond (2023), suggests that approximately half of
+all families living in poverty are single-parent families.
+:::
+
+::: {.column width="50%"}
+```{r}
+#| label: display-goal-4-data
+goal4 |> mutate(goal4 = if_else(goal4 == 1, "Yes", "No")) |>
+  tbl_summary(by = goal4, include = c(race, sex), missing = "no", label = list(race = "Race of householder", sex = "Sex of householder")) |>
+  modify_header(label = "**Achieved Purpose 4**") |>
+  as_gt() |>
+  tab_options(table.font.size = 20,table.width = px(500), data_row.padding = px(5)) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+```
+:::
+:::::
+
+## TANF Purpose 4: Model
+
+#### **Encourage the formation and maintenance of two-parent families.**
+
+![](images/Goal2_Hierarchy.jpeg)
+
+-   **Outcome:** Purpose 4 achievement
+
+-   **Household-level predictors:** Number of years in sample; age of
+    person; amount of TANF cash assistance received (in hundreds of
+    dollars); race of householder, sex of householder
+
+-   **State-year level predictors:** Percent unobligated TANF funds;
+    percent TANF expenditures on basic assistance; percent TANF
+    expenditures on fatherhood programs
+
+## TANF Purpose 4: Results
+
+#### **Encourage the formation and maintenance of two-parent families.**
+
+#### AUC: 0.745
+
+```{r}
+tidy(goal4_fit, effects = "fixed", conf.int = TRUE, conf.level = .80) |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or) |>
+  mutate(
+    term = factor(term),
+    term = fct_relevel(term, c("(Intercept)", "tanf_amt_received", "n_years", "raceBlack", "raceAsian", "raceAIAN", "raceOther", "sexMale", "pct_unobligated", "pct_basic_assistance", "pct_fatherhood_programs", "partyR"))
+  ) |>
+  arrange(term) |>
+  mutate(
+    conf.low_or = substr(as.character(conf.low_or), 1, 5),
+    conf.high_or = substr(as.character(conf.high_or), 1, 5),
+    cred_interval = paste0("(", conf.low_or, ", ", conf.high_or, ")")) |>
+  select(-c(conf.low_or, conf.high_or)) |>
+  mutate(
+  term = as.character(term),
+  term = case_match(
+    term,
+    "(Intercept)" ~ "Global Intercept",
+    "tanf_amt_received" ~ "Amount of TANF cash assistance received",
+    "n_years" ~ "Number of years in sample",
+    "raceBlack" ~ "Race: Black",
+    "raceAsian" ~ "Race: Asian",
+    "raceAIAN" ~ "Race: AIAN",
+    "raceOther" ~ "Race: Other race",
+    "sexMale" ~ "Householder is male",
+    "pct_unobligated" ~ "Percent of TANF funds unobligated",
+    "pct_basic_assistance" ~ "Percent of TANF expenditures on basic assistance",
+    "pct_fatherhood_programs" ~ "Percent of TANF expenditures on fatherhood programs",
+    "partyR" ~ "Governor of state in cohort year is Republican"
+  )) |>
+  gt(rowname_col = "term") |>
+  fmt_number(decimals = 3) |>
+  tab_stubhead(label = md("**Term**")) |>
+  cols_label(odd_ratio = md("**Estimated Odds Ratio**"), cred_interval = md("**80% Credible Interval**")) |>
+  tab_options(table.font.size = 18,table.width = px(1000), data_row.padding = px(5)) |>
+  cols_width(stub() ~ pct(45)) |>
+   #          starts_with("odd") ~ pct(33)) |>
+  #tab_options(table.font.size = 12, table.width = 600) |>
+  cols_align(align = "center", columns = c(odd_ratio, cred_interval)) |>
+  opt_align_table_header(align = "left") |>
+  tab_footnote(
+    footnote = "categorical variable (yes = 1, no = 0)",
+    locations = cells_stub(rows = c("Race: Black", "Race: Asian", "Race: Other race", "Governor of state in cohort year is Republican","Householder is male"
+    ))
+  ) |>
+  tab_footnote(
+    footnote = "in hundreds of dollars",
+    locations = cells_stub(rows = c("Amount of TANF cash assistance received"))
+  ) |>
+  tab_footnote(
+    footnote = "for state and cohort year",
+    locations = cells_stub(rows = c("Percent of TANF funds unobligated", "Percent of TANF expenditures on basic assistance", "Percent of TANF expenditures on fatherhood programs"))
+  ) |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_body(rows = c("Global Intercept", "Amount of TANF cash assistance received", "Number of years in sample", "Race: Black", "Race: Asian", "Householder is male", "Percent of TANF expenditures on fatherhood programs", "Governor of state in cohort year is Republican"))) |>
+  tab_style(style = cell_text(weight = "bold"), locations = cells_stub(rows = c("Global Intercept", "Amount of TANF cash assistance received", "Number of years in sample", "Race: Black", "Race: Asian", "Householder is male", "Percent of TANF expenditures on fatherhood programs", "Governor of state in cohort year is Republican"))) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_body()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stub()) |>
+  tab_style(style = list(cell_text(color = "black")), locations = cells_stubhead())
+```
+
+## Summary
+
+-   **No evidence** that state-level unobligated funds or state-level
+    expenditures on direct cash assistance are associated with the
+    household-level fulfillment of any of the four purposes of TANF.
+
+-   State expenditures on **programs** (pregnancy prevention, child
+    welfare, fatherhood programs, etc.) had **little to no effect** on
+    achievement of the four purposes of TANF.
+
+-   In **Republican states,** children in the SIPP sample were less
+    likely to live with relatives (Purpose 1), households less likely to
+    be two-parent (Purpose 4).
+
+-   **Increases in household-level direct cash assistance** correlated
+    with lower odds of achieving Purposes 2 and 4, higher odds of
+    achieving Purpose 3. (Note: unclear directionality of this
+    relationship)
+
+-   **Racial differences in** achievement of Goals 2 and 4.
+
+## Policy Recommendations
+
+1.  **States should prioritize spending on direct cash assistance** over
+    spending on programs.
+
+2.  **TANF's four purposes should be reevaluated** to better align with
+    current research on child and family wellbeing, and align with
+    outcomes that can be easily measured.
+
+3.  **Evaluate the effectiveness of programs funded by the TANF block
+    grant** in supporting low-income families to achieve economic
+    security and stability.
+
+## Limitations and Future Work
+
+-   Use of survey data to assess achievement of the four goals of TANF
+    was not exact $\rightarrow$ Data collected specifically to analyze
+    TANF goals could yield a more informative analysis.
+
+-   Cohort design $\rightarrow$ Future work should examine longitudinal
+    relationships. Cross-effects model designs may be useful for
+    capturing this relationship.
+
+-   More research is necessary to examine the impacts of unobligated
+    funds on other outcomes, such as poverty, food insecurity, and child
+    homelessness.
+
+-   Causal approaches may be useful in determining direction of
+    relationship between household-level direct cash assistance and
+    household outcomes.
+
+-   Bayesian hierarchical modeling may be used more widely in social
+    science research
+
+    -   Intuitive interpretation of uncertainty for logistic regression
+        models
+
+    -   Captures within-group correlation for nested data.
+
+## References
+
+# Questions
+
+# Appendix
+
+## Purpose 1: ROC Curve
+
+## Purpose 2: ROC Curve
+
+## Purpose 3: ROC Curve
+
+## Purpose 4: ROC Curve
+
+# Thank you!
