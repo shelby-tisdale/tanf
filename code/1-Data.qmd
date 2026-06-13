@@ -1,0 +1,782 @@
+---
+title: "data"
+format: html
+editor: visual
+message: false
+warning: false
+---
+
+# Load Data and Packages
+
+```{r}
+#| label: load-packages
+library(tidyverse)
+library(data.table)
+library(bit64)
+library(janitor)
+library(gt)
+library(gtsummary)
+```
+
+## TANF federal expenditures data
+
+Available from https://acf.gov/ofa/resource-library?f%5B0%5D=type%3Aeasychart. Year-level datasets labeled "TANF Financial Data - FY 20XX". Data from "Total Expenditures" Sheet.
+
+```{r}
+#| label: load-tanf-data
+
+# set working directory
+setwd("C:/Users/shelb/OneDrive - Princeton University/Documents/Duke Course Folders/2324 Spring/STA493/tanf")
+
+# TANF federal expenditures data (fiscal year 2015-2022)
+# Source: https://acf.gov/ofa/resource-library?f%5B0%5D=type%3Aeasychart
+tanf <- read_csv("data/total_expenditures_2015_2022.csv")
+moe <- read_csv("data/tanf_moe_2015_2022.csv")
+```
+
+```{r}
+#| label: state-year-tanf-data
+
+tanf_state_year <- tanf |>
+  # join to moe data
+  left_join(moe, by = join_by(state, fiscal_year)) |>
+  # filter for relevant years
+  filter(fiscal_year %in% c(2016:2022)) |>
+  # create variables for percent unobligated funds, percent spent on basic
+  # assistance, and percent spent on program management
+  # funds awarded include federal funds only, not state contributions
+  # expenditures are state AND federal
+  mutate(
+    available_fed_funds = funds_awarded + carryover -
+      (ccdf_discretionary + ssbg_block_grant),
+    available_funds = available_fed_funds + moe,
+    # funds awarded + carryover = total available funds
+    # take percents relative to available (not expended funds)
+    # so that denominator is comparable
+    pct_unobligated = unobligated_balance/(available_funds),
+    pct_basic_assistance = basic_assistance/available_funds,
+    pct_program_mgmt = program_mgmt/available_funds,
+    pct_work_ed = work_ed/available_funds,
+    pct_fatherhood_programs = fatherhood_programs/available_funds,
+    pct_pregnancy_prevention = pregnancy_prevention/available_funds,
+    pct_child_welfare = child_welfare/available_funds
+    ) |>
+  # select relevant variables
+  select(
+    state, fiscal_year, pct_unobligated, pct_program_mgmt, pct_basic_assistance,
+    pct_work_ed, pct_fatherhood_programs, pct_pregnancy_prevention,
+    pct_child_welfare
+    )
+```
+
+## SIPP Data
+
+```{r}
+#| label: load-sipp-data
+#| eval: false
+
+# create function for loading data
+load_sipp <- function(directory) {
+  ds <- c(directory)
+  sipp <- fread(ds, sep = "|", select = c(
+    # ID VARS
+   "SHHADID", "SPANEL", "SSUID", "SWAVE", "PNUM", "MONTHCODE", "GHLFSAM",
+   "EHRESIDENCID", "EINTTYPE", "ERESIDENCEID","RIN_UNIV",
+   "THHLDSTATUS", "TST_INTV", "EPNPAR1", "EPNPAR2", "EPNCOHAB", "EPNSPOUSE",
+   "RPNCHILD1", "RPNCHILD2", "RPNCHILD3", "RPNCHILD4", "RPNCHILD5", "RPNCHILD6",
+   "RPNCHILD7", "RPNCHILD8", "RPNCHILD9", "RPNCHILD10", "RPNCHILD11",
+   "RPNCHILD12",
+   # OTHER
+   "EANYKID", "EBDAD", "EBMOM", "ECLTH_SR1YN", "EJB1_BSLRYB", "EJB1_SCRNR",
+   "EMPF", "EMS_EHC", "ENJ_LKWRK", "ENJFLAG", "EPAR_SCRNR", "EPAR1TYP",
+   "EPAR2TYP", "ERELRPE", "ETANF_BMONTH", "ETANF_COVTYP", "ETANF_EMONTH",
+   "ETANF_OWN", "ETANF_PTCS", "EWELAC_MNYN", "EWELACTV1", "EWELACTV2_1",
+   "EWELACTV2_2", "EWELACTV2_3", "EWELACTV4", "EXMAR", "RCB_UNION", "RCHTYP1",
+   "RCHTYP2", "RCHTYP3", "RCHTYP4","RCHTYP5", "RCHTYP6", "RCHTYP7","RCHTYP8",
+   "RCHTYP9", "RCHTYP10", "RCHTYP11", "RCHTYP12", "RSNAP_YRYN", "RTANF_CFLG",
+   "RTANF_LCYR", "RTANF_MNYN", "RGA_YRYN", "RTANF_YRYN", "RWIC_YRYN", "TAGE",
+   "TAGE_FB", "EUC1MNYN",
+   "TCEB", "TFCYINCPOV", "TFINCPOV", "THINCPOV", "TNUM_CBU", "TNUMKIDS",
+   "TPTRNINC", "TTANF_AMT", "TTANF_BRSN", "TTANF_ERSN", "TYEAR_FB", "ERP",
+   "RFAMNUM", "RFPERSONS",
+   # DEMOGRAPHICS
+   "EEDUC", "EORIGIN", "TRACE", "ESEX", "RAFEVER", "ECITIZEN",
+   # RELATIONSHIP DATA
+   "RREL1", "RREL2", "RREL3", "RREL4", "RREL5", "RREL6", "RREL7", "RREL8",
+   "RREL9", "RREL10", "RREL11", "RREL12", "RREL13", "RREL14", "RREL15",
+   "RREL16", "RREL17", "RREL18", "RREL19", "RREL20", "RREL21", "RREL22",
+   "RREL23", "RREL24", "RREL25", "RREL26", "RREL27", "RREL28", "RREL29",
+   "RREL30", "RREL_PNUM1", "RREL_PNUM2", "RREL_PNUM3", "RREL_PNUM4",
+   "RREL_PNUM5", "RREL_PNUM6", "RREL_PNUM7", "RREL_PNUM8", "RREL_PNUM9",
+   "RREL_PNUM10", "RREL_PNUM11", "RREL_PNUM12", "RREL_PNUM13", "RREL_PNUM14",
+   "RREL_PNUM15", "RREL_PNUM16", "RREL_PNUM17", "RREL_PNUM18", "RREL_PNUM19",
+   "RREL_PNUM20", "RREL_PNUM21", "RREL_PNUM22", "RREL_PNUM23", "RREL_PNUM24",
+   "RREL_PNUM25", "RREL_PNUM26", "RREL_PNUM27", "RREL_PNUM28", "RREL_PNUM29",
+   "RREL_PNUM30",
+   # CHILD BIRTH YEARS
+   "TCBYR_1", "TCBYR_2", "TCBYR_3", "TCBYR_4", "TCBYR_5", "TCBYR_6", "TCBYR_7",
+  # WEIGHTS AND SAMPLING
+   "GVARSTR", "WPFINWGT", "GHLFSAM",
+   # REPLICATE WEIGHTS (needed for SE estimation via srvyr) - add later
+  ))
+  names(sipp) <- toupper(names(sipp))
+  return(sipp)
+}
+
+# set working directory
+setwd("C:/Users/shelb/OneDrive - Princeton University/Documents/Duke Course Folders/2324 Spring/STA493/tanf")
+
+# load survey data for each year
+sipp2022 <- load_sipp("data/sipp/pu2022.csv") |>
+  mutate(year = 2021)
+sipp2021 <- load_sipp("data/sipp/pu2021.csv") |>
+  mutate(year = 2020)
+sipp2020 <- load_sipp("data/sipp/pu2020.csv") |>
+  mutate(year = 2019)
+sipp2019 <- load_sipp("data/sipp/pu2019.csv") |>
+  mutate(year = 2018)
+sipp2018 <- load_sipp("data/sipp/pu2018.csv") |>
+  mutate(year = 2017)
+
+# combine data frames
+sipp <- rbind.data.frame(sipp2022, sipp2021, sipp2020, sipp2019, sipp2018) |>
+  clean_names()
+
+# download csv
+write.csv(sipp, "sipp.csv")
+```
+
+## Clean Data
+
+```{r}
+#| label: recode-states
+
+sipp <- sipp |>
+  mutate(state = case_match(
+    tst_intv,
+    1 ~ "ALABAMA",
+    2 ~ "ALASKA", 
+    4 ~ "ARIZONA",
+    5 ~ "ARKANSAS",
+    6 ~ "CALIFORNIA",
+    8 ~ "COLORADO",
+    9 ~ "CONNECTICUT",
+    10 ~ "DELAWARE",
+    11 ~ "DIST.OF COLUMBIA",
+    12 ~ "FLORIDA",
+    13 ~ "GEORGIA",
+    15 ~ "HAWAII",
+    16 ~ "IDAHO",
+    17 ~ "ILLINOIS",
+    18 ~ "INDIANA",
+    19 ~ "IOWA",
+    20 ~ "KANSAS",
+    21 ~ "KENTUCKY",
+    22 ~ "LOUISIANA",
+    23 ~ "MAINE",
+    24 ~ "MARYLAND",
+    25 ~ "MASSACHUSETTS",
+    26 ~ "MICHIGAN",
+    27 ~ "MINNESOTA",
+    28 ~ "MISSISSIPPI",
+    29 ~ "MISSOURI",
+    30 ~ "MONTANA",
+    31 ~ "NEBRASKA",
+    32 ~ "NEVADA",
+    33 ~ "NEW HAMPSHIRE",
+    34 ~ "NEW JERSEY",
+    35 ~ "NEW MEXICO",
+    36 ~ "NEW YORK",
+    37 ~ "NORTH CAROLINA",
+    38 ~ "NORTH DAKOTA",
+    39 ~ "OHIO",
+    40 ~ "OKLAHOMA",
+    41 ~ "OREGON",
+    42 ~ "PENNSYLVANIA",
+    44 ~ "RHODE ISLAND",
+    45 ~ "SOUTH CAROLINA",
+    46 ~ "SOUTH DAKOTA",
+    47 ~ "TENNESSEE",
+    48 ~ "TEXAS",
+    49 ~ "UTAH",
+    50 ~ "VERMONT",
+    51 ~ "VIRGINIA",
+    53 ~ "WASHINGTON",
+    54 ~ "WEST VIRGINIA",
+    55 ~ "WISCONSIN",
+    56 ~ "WYOMING",
+    60 ~ "PUERTO RICO AND ISLAND AREAS",
+    61 ~ "FOREIGN COUNTRY",
+    .default = as.character(tst_intv)
+    )) |>
+  filter(!is.na(state))
+```
+
+This dataset includes all low-income households that have *at least one child* in *at least one month*. Low-income households will be defined by looking at data on TANF eligibility by income and state. Households with TANF-eligible incomes will be included in the sample.
+
+```{r}
+#| label: find-participants
+#| warning: false
+
+households_eligible <- sipp |>
+  # sample unit id is originally sampled household
+  # this will be used as an ID variable for household
+  # look at each household for each month it is in sample
+  group_by(ssuid, year, monthcode) |>
+  summarize(
+    # identifies number of children in household
+    hh_children_count = sum(tage < 18, na.rm = TRUE),
+    # identifies whether household is below poverty threshold
+    poverty = first(if_else(thincpov <= 1, 1, 0)),
+    .groups = "drop"
+  ) |>
+  # housholds with children and below poverty threshold
+  filter(hh_children_count > 0 & poverty == 1) |>
+  select(ssuid) |>
+  distinct()
+
+sipp_participants <- sipp |>
+  filter(ssuid %in% households_eligible$ssuid)
+```
+
+# Purpose 1 Variable
+
+**Purpose 1:** Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.
+
+**Criteria:** This purpose is fulfilled for a given household and month if all children in the household have at least one relative in the household.
+
+```{r}
+#| label: tanf-purpose-1
+
+# 1. Filter for all children in dataset
+# 2. Check whether child has parents in household
+# 3. Check child's relationship with householder.
+# 4. For children who are not related to householder,
+# check all household relationships for that child
+
+# If child has relative or parent in household, purpose is fulfilled for that child.
+# If all children in the household have a parent or relative in the household,
+# then purpose is fulfilled for household
+
+children <- sipp_participants |>
+  # filters for children
+  filter(tage < 18) |>
+  # select id variables
+  select(ssuid, year, monthcode, pnum, erelrpe, epnpar1, epnpar2,
+         starts_with("rrel")) |>
+    mutate(purpose1 = case_when(
+    # child who has at least one parent in household
+    !is.na(epnpar1) | !is.na(epnpar2) ~ 1,
+    # child is householder with relatives
+    # applies to a few older children
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 1 ~ 2,
+    # foster child
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 15 ~ 0,
+    # grandchild
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 8 ~ 1,
+    # sibling
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 10 ~ 1,
+    # niece / nephew
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 13 ~ 1,
+    # other relative
+    is.na(epnpar1) & is.na(epnpar2) & erelrpe == 14 ~ 1,
+    # indicator for fringe cases
+    .default = 2
+  ))
+
+children_alt <- sipp_participants |>
+  # filters for children
+  filter(tage < 18) |>
+  # select id variables
+  select(ssuid, year, monthcode, pnum, epnpar1, epnpar2) |>
+    mutate(purpose1_alt = case_when(
+    # child who has at least one parent in household
+    !is.na(epnpar1) | !is.na(epnpar2) ~ 1,
+    # indicator for fringe cases
+    .default = 0
+  ))
+
+# create lookup table for children and household relationships
+# for fringe cases (no parent in household, housholder is not relative)
+children_lookup <- children |>
+  # filter for fringe cases
+  filter(purpose1 == 2) |>
+  rename(child_pnum = pnum) |>
+  # child person number and sample unit id (id vars)
+  # relationship variables
+  select(child_pnum, ssuid, monthcode, year, erelrpe,
+         starts_with("rrel"), purpose1) |>
+  # each row is a household member-child combination for a month, for
+  # person numbers of all  members of the household
+  pivot_longer(cols = starts_with("rrel_pnum"),
+               names_to = "hh_member_number",
+               values_to = "person_num_rel") |>
+  filter(!is.na(person_num_rel)) |>
+  # each row is a household member-child combination for a month, for the
+  # person number and relationship to all members of household
+  pivot_longer(cols = starts_with("rrel"),
+               names_to = "hh_member_number2",
+               values_to = "relationship") |>
+  filter(!is.na(relationship)) |>
+  # match household member numbers for relationship and person number variables
+  mutate(hh_member_number = parse_number(hh_member_number),
+         hh_member_number2 = parse_number(hh_member_number2)) |>
+  filter(hh_member_number == hh_member_number2) |>
+  # remove relationship between child and self
+  filter(relationship != 99) |>
+  # select relevant variables for lookup
+  select(child_pnum, ssuid, year, monthcode, relationship, purpose1) |>
+  # indicator for whether person is a relative of the child
+  mutate(purpose1_lookup = if_else(
+    relationship %in% c(5, 7, 8, 9, 10, 12, 16, 17), 1, 0)) |>
+  group_by(year, monthcode, ssuid, child_pnum) |>
+  # if average of relative indicators is greater than 0, child lives with at
+  # least one relative
+  summarize(purpose1_avg = mean(purpose1_lookup, na.rm = TRUE), .groups = "drop") |>
+  mutate(purpose1_lookup = if_else(purpose1_avg == 0, 0, 1)) |>
+  select(-c(purpose1_avg)) 
+
+# match children dataset to lookup table to update purpose fulfilled for fringe cases
+children <- children |>
+  left_join(children_lookup,
+            by = join_by("pnum" == "child_pnum", year, monthcode, ssuid)) |>
+  select(year, monthcode, ssuid, pnum, purpose1, purpose1_lookup) |>
+  mutate(purpose1 = if_else(purpose1 == 2, purpose1_lookup, purpose1)) |>
+  mutate(household_id = as.numeric(ssuid))
+
+# evaluates whether tanf purpose 1 is achieved for a household in a given year and month
+hh_purpose1 <- children |>
+  # group by year, monthj, and household
+  group_by(year, monthcode, ssuid) |>
+  # determine average (over all children in household in that month)
+  # achievement of purpose 1
+  summarise(avg_purpose1 = mean(purpose1, na.rm = TRUE), .groups = "drop") |>
+  # if purpose1 = 0 for any child in household, purpose1 is not achieved
+  mutate(hh_month_purpose1 = if_else(avg_purpose1 != 1, 0, 1)) |>
+  select(-avg_purpose1)
+
+# evaluates whether tanf purpose 1 is achieved for a household in a given year and month
+hh_purpose1_alt <- children_alt |>
+  # group by year, monthj, and household
+  group_by(year, monthcode, ssuid) |>
+  # determine average (over all children in household in that month)
+  # achievement of purpose 1
+  summarise(avg_purpose1_alt = mean(purpose1_alt, na.rm = TRUE), .groups = "drop") |>
+  # if purpose1 = 0 for any child in household, purpose1 is not achieved
+  mutate(hh_month_purpose1_alt = if_else(avg_purpose1_alt != 1, 0, 1)) |>
+  select(-avg_purpose1_alt)
+
+child_purpose1 <- children |>
+  # group by year, monthj, person, and household
+  group_by(ssuid, pnum) |>
+  # determine average (over all years in sample)
+  # achievement of purpose 1
+  summarise(avg_purpose1 = mean(purpose1, na.rm = TRUE), .groups = "drop") |>
+  # if purpose1 = 0 for any year, purpose1 is not achieved
+  mutate(child_purpose1 = if_else(avg_purpose1 != 1, 0, 1)) |>
+  select(-avg_purpose1)
+
+child_purpose1_alt <- children_alt |>
+  # group by year, monthj, person, and household
+  group_by(ssuid, pnum) |>
+  # determine average (over all years in sample)
+  # achievement of purpose 1
+  summarise(avg_purpose1_alt = mean(purpose1_alt, na.rm = TRUE), .groups = "drop") |>
+  # if purpose1 = 0 for any year, purpose1 is not achieved
+  mutate(child_purpose1_alt = if_else(avg_purpose1_alt != 1, 0, 1)) |>
+  select(-avg_purpose1_alt)
+```
+
+# Purpose 2 Variable
+
+**Purpose 2:** End the dependence of needy parents on government benefits by promoting job preparation, work, and marriage.
+
+**Participant Households:** All households who received government benefits in the earliest year of their participation in the study.
+
+**Criteria:** Purpose 2 is fulfilled for a participant household if household members are no longer receiving government benefits by the end of the reference frame. Variables related to job preparation, work, and marriage will be used as predictors.
+
+**Note:** Year will not be a level in this model
+
+```{r}
+#| label: tanf-purpose-2
+
+
+# find households receiving benefits at beginning of reference period
+govt_benefits_begin <- sipp_participants |>
+  group_by(ssuid) |>
+  # find first year of reference period for household
+  filter(year == min(year)) |>
+  ungroup() |>
+  # detect whether person received benefits
+  mutate(govt_benefits_begin = if_else(
+    rga_yryn == 1 | rtanf_yryn == 1 | rsnap_yryn == 1 | rwic_yryn == 1, 1, 0
+  )) |>
+  # summarize benefit receipt per household
+  group_by(year, ssuid) |>
+  summarize(
+    govt_benefits_begin = mean(govt_benefits_begin, na.rm = TRUE),
+    .groups = "drop"
+    ) |>
+  mutate(govt_benefits_begin = if_else(govt_benefits_begin > 0, 1, 0)) |>
+  # save variable for first year of reference period
+  rename(begin_year = year)
+
+# find whether households received benefits at end of reference period
+govt_benefits_end <- sipp_participants |>
+  group_by(ssuid) |>
+  # find last year of reference period for household
+  filter(year == max(year)) |>
+  ungroup() |>
+  # detect whethter individual received benefits
+  mutate(govt_benefits_end = if_else(
+    rga_yryn == 1 | rtanf_yryn == 1 | rsnap_yryn == 1 | rwic_yryn == 1, 1, 0
+  )) |>
+  # summarize benefit receipt per houeshold
+  group_by(year, ssuid) |>
+  summarize(
+    govt_benefits_end = mean(govt_benefits_end, na.rm = TRUE), .groups = "drop"
+    ) |>
+  mutate(govt_benefits_end = if_else(govt_benefits_end > 0, 1, 0)) |>
+  # save variable for last year of reference period
+  rename(end_year = year)
+
+# join govt benefits datasets
+purpose2 <- inner_join(
+  govt_benefits_begin, govt_benefits_end, by = join_by("ssuid")
+  ) |>
+  # filter for households that are in dataset for more than one year
+  # and are receiving government benefits in first year
+  filter(begin_year != end_year & govt_benefits_begin == 1) |>
+  # create variable for whether the household is still receiving benefits at the end of the reference period
+  # 1: purpose fulfilled, family is no longer receiving goverment benefits
+  # 0: purpose not fulfilled
+  mutate(purpose2 = if_else(govt_benefits_end < govt_benefits_begin, 1, 0))
+
+# create dataset with response and relevant predictors for tanf purpose 2
+# at person-month level
+person_purpose2 <- sipp_participants |>
+  # create variable for whether individual received job training in month
+  mutate(received_job_training = case_when(
+    ewelactv2_1 == 1 ~ 1,
+    ewelac_mnyn == 1 ~ 1, 
+    ewelactv2_2 == 1 ~ 1,
+    ewelactv2_3 == 1 ~ 1,
+    ewelactv1 == 1 ~ 1,
+    ewelactv4 == 1 ~ 1,
+    .default = 0
+  )) |>
+  # whether householder is married in month
+  mutate(hh_married_month = case_when(
+    (erelrpe == 1 | erelrpe == 2) & (ems_ehc == 1 | ems_ehc == 2) ~ 1,
+    (erelrpe == 1 | erelrpe == 2) & !(ems_ehc == 1 | ems_ehc == 2) ~ 0,
+    .default = NA)
+  ) |>
+  left_join(purpose2, join_by(ssuid)) |>
+  # participant in purpose 2 if purpose2 is not NA
+  select(
+    ssuid, pnum, year, monthcode, received_job_training, hh_married_month,
+    purpose2
+    ) |>
+  distinct()
+```
+
+# Purpose 3 Variable
+
+**Purpose 3:** Prevent and reduce the incidence of out-of-wedlock pregnancies
+
+**Note:** Evaluate at person-level instead of household-level
+
+**Participants:** Women age 15+, for all years in which they are unmarried
+
+**Criteria:** Purpose 3 is fulfilled if number of children of an unmarried individual does not increase during reference period (will not catch all cases due to length of pregnancies, abortions, and miscarriages, but should catch most)
+
+```{r}
+#| label: tanf-purpose-3
+
+purpose_3_women <- sipp_participants |>
+  # filters for women between ages 15 and 50 who are not married
+  # (widowed, divoced, separated, never married)
+  filter(tage >= 15 & tage <= 50 & ems_ehc != 1 & ems_ehc != 2 & esex == 2) |>
+  # select id variables and variables for birth years of children
+  select(ssuid, monthcode, year, pnum, tcbyr_1:tcbyr_7) |>
+  # turn year and month into date object
+  mutate(month = as.character(monthcode)) |>
+  mutate(month = if_else(nchar(month) == 1, paste("0", month, sep = ""),
+                         month)) |>
+  mutate(year_month_day = ymd(paste(year, month, "01", sep = "-"))) |>
+  group_by(ssuid, pnum) |>
+  # find minimum and maximum date that each woman is unmarried and in sample
+  mutate(min_date = min(year_month_day), max_date = max(year_month_day)) |>
+  ungroup() |>
+  # pivot data so that each row is the birth year of one of the children of each woman
+  pivot_longer(
+    cols = starts_with("tcbyr"),
+    names_to = "child_indicator",
+    values_to = "birth_year"
+  ) |>
+  # remove observations with no birth year
+  filter(!is.na(birth_year)) |>
+  # create indicator for whether woman gave birth during time unmarried and in sample
+  mutate(had_child_unmarried = if_else(
+    birth_year >= year(min_date) & birth_year <= year(max_date), 1, 0)) |>
+  # creates data set of women who had children out-of-wedlock during time in sample
+  filter(had_child_unmarried == 1) |>
+  select(ssuid, pnum, had_child_unmarried) |>
+  distinct()
+
+# checking purpose3 indicator with contextual data
+# indicator makes sense
+purpose3_test <- sipp_participants |>
+  select(ssuid, pnum, monthcode, year, epar_scrnr, tceb, tage, rcb_union,
+         ems_ehc, epncohab, rpnchild1:rpnchild12) |>
+  right_join(purpose_3_women, by = join_by(ssuid, pnum)) |>
+  arrange(ssuid, pnum, year, monthcode)
+
+# purpose 3 participants with indicator for whether purpose 3 is fulfilled
+# disregards year and month levels
+purpose3 <- sipp_participants |>
+  filter(tage >= 15 & tage <= 50 & ems_ehc != 1 & ems_ehc != 2 & esex == 2) |>
+  select(ssuid, pnum) |>
+  left_join(purpose_3_women, by = join_by(ssuid, pnum)) |>
+  mutate(purpose3 = if_else(is.na(had_child_unmarried), 1, 0)) |>
+  select(-had_child_unmarried) |>
+  distinct() |>
+  mutate(unique_id = paste0(as.character(ssuid), as.character(pnum)))
+```
+
+# Purpose 4 Variable
+
+**Purpose:** Encourage the formation and maintenance of two-parent families.
+
+**Participants:** Households with children and at least one parent
+
+**Criteria:** one parent family is two-parent family at end of reference period, two-parent family is still two-parent family
+
+```{r}
+#| label: tanf-purpose-4
+
+# finds number of parents that each child has for each year and month
+child_parent_count <- sipp_participants |>
+  # filters participants for children only
+  mutate(is_child = if_else(tage < 18, 1, 0)) |>
+  filter(is_child == 1) |>
+  # select relevant variables
+  select(ssuid, pnum, tage, year, monthcode, epnpar1, epnpar2) |>
+  # create variable for the number of parents a child has
+  mutate(num_parents = case_when(
+    is.na(epnpar1) & is.na(epnpar2) ~ 0,
+    is.na(epnpar1) | is.na(epnpar2) ~ 1,
+    !is.na(epnpar1) & !is.na(epnpar2) ~ 2
+  ))
+
+# finds the number of parents recorded for a child at the end of the reference period
+child_parent_count_end <- child_parent_count |>
+  group_by(ssuid, pnum) |>
+  filter(year == max(year)) |> 
+  filter(monthcode == max(monthcode)) |>
+  ungroup() |>
+  select(ssuid, pnum, year, num_parents) |>
+  rename(num_parents_end = num_parents,
+         max_year = year) |>
+  distinct()
+
+# finds the number of parents recorded for a child at the beginning of the reference period
+child_parent_count_start <- child_parent_count |>
+  group_by(ssuid, pnum) |>
+  filter(year == min(year)) |> 
+  filter(monthcode == min(monthcode)) |>
+  ungroup() |>
+  select(ssuid, pnum, year, num_parents) |>
+  rename(num_parents_start = num_parents,
+         min_year = year) |>
+  distinct()
+
+# creates indicator for whether a purpose is achieved
+purpose4 <- inner_join(child_parent_count_start, child_parent_count_end,
+                    by = join_by("ssuid", "pnum")) |>
+  # removes children who don't have parents to begin with
+  filter(num_parents_start != 0) |>
+  mutate(purpose4 = if_else(num_parents_end == 2, 1, 0))
+
+# evaluates whether purpose 4 is achieved for a household
+hh_purpose4 <- purpose4 |>
+  # group by household
+  group_by(ssuid) |>
+  # determine average (over all children in household in that month)
+  # achievement of purpose 4
+  summarise(avg_purpose4 = mean(purpose4, na.rm = TRUE), .groups = "drop") |>
+  # if purpose4 = 0 for any child in household, purpose1 is not achieved
+  mutate(hh_purpose4 = if_else(avg_purpose4 != 1, 0, 1))
+```
+
+# Clean Variables and Combine All Datasets
+
+```{r}
+#| label: data-all-purpose
+
+sipp_all_purposes <- sipp_participants |>
+  # select necessary variables
+  select(
+    ssuid, pnum, monthcode, year, tage, state, eeduc, eorigin, trace, esex,
+    ecitizen, tceb, erelrpe, ejb1_scrnr,
+    # tanf variables
+    etanf_bmonth, rtanf_lcyr, etanf_emonth, etanf_covtyp, etanf_own, rtanf_cflg,
+    rtanf_mnyn, rtanf_yryn, ttanf_amt,
+    # weights
+    gvarstr, wpfinwgt, ghlfsam
+    ) |>
+  # clean up variables 
+  mutate(
+    education = case_match(
+      eeduc,
+      31 ~ "Less than 1st grade",
+      32 ~ "1st, 2nd, 3rd or 4th grade",
+      33 ~ "5th or 6th grade",
+      34 ~ "7th or 8th grade",
+      35 ~ "9th grade",
+      36 ~ "10th grade",
+      37 ~ "11th grade",
+      38 ~ "12th grade, no diploma",
+      39 ~ "High School Graduate",
+      40 ~ "Some college credit, but less than 1 year",
+      41 ~ "1 or more years of college, no degree",
+      42 ~ "Associate's degree",
+      43 ~ "Bachelor's degree",
+      44 ~ "Master's degree",
+      45 ~ "Professional School degree",
+      46 ~ "Doctorate degree",
+      .default = as.character(eeduc)
+    ),
+    ethnicity = if_else(eorigin == 1, "Hispanic", "Not Hispanic"),
+    sex = if_else(esex == 1, "Male", "Female"),
+    race = case_match(
+      trace,
+      1 ~ "White",
+      2 ~ "Black",
+      3 ~ "AIAN",
+      4 ~ "Asian",
+      5 ~ "HP",
+      6 ~ "White-Black",
+      7 ~ "White-AIAN",
+      8 ~ "White-Asian",
+      9 ~ "Black-AIAN",
+      10 ~ "Other"
+    ),
+    citizenship = if_else(ecitizen == 1, 1, 0),
+    fiscal_year = case_when(
+      year == 2017 & monthcode < 10 ~ 2017,
+      year == 2017 & monthcode >= 10 ~ 2018,
+      year == 2018 & monthcode < 10 ~ 2018,
+      year == 2018 & monthcode >= 10 ~ 2019,
+      year == 2019 & monthcode < 10 ~ 2019,
+      year == 2019 & monthcode >= 10 ~ 2020,
+      year == 2020 & monthcode < 10 ~ 2020,
+      year == 2020 & monthcode >= 10 ~ 2021,
+      year == 2021 & monthcode < 10 ~ 2021,
+      year == 2021 & monthcode >= 10 ~ 2022,
+      year == 2022 & monthcode < 10 ~ 2022,
+      year == 2022 & monthcode >= 10 ~ 2023
+    )
+  ) |>
+  select(-c(ecitizen, trace, eeduc, eorigin, esex)) |>
+  # create indicators for whether this person-month is included in the sample for a certain purpose
+  mutate(
+    # all households are in purpose 1
+    in_purpose1 = if_else(ssuid %in% hh_purpose1$ssuid, 1, 0),
+    in_purpose1_alt = if_else(ssuid %in% hh_purpose1_alt$ssuid, 1, 0),
+    # selected households for purpose2
+    in_purpose2 = if_else(ssuid %in% purpose2$ssuid, 1, 0),
+    # individuals in purpose 3
+    in_purpose3 = if_else(paste0(ssuid, pnum) %in% purpose3$unique_id, 1, 0),
+    # all households are in purpose 4
+    in_purpose4 = if_else(ssuid %in% hh_purpose4$ssuid, 1, 0)
+    ) |>
+  # join purpose 1 achievement data
+  left_join(hh_purpose1, by = join_by(year, monthcode, ssuid)) |>
+  left_join(hh_purpose1_alt, by = join_by(year, monthcode, ssuid)) |>
+  # join purpose 2 achievement data
+  left_join(person_purpose2, by = join_by("ssuid", "pnum", "monthcode", "year")) |>
+  # join purpose 3 achievement data
+  left_join(purpose3, by = join_by("ssuid", "pnum")) |>
+  # join purpose 4 achievement data
+  left_join(hh_purpose4, by = join_by("ssuid")) |>
+  select(-avg_purpose4) |>
+  rename(purpose1 = hh_month_purpose1,
+         purpose1_alt = hh_month_purpose1_alt,
+         purpose4 = hh_purpose4) |>
+  # join to tanf data
+  left_join(tanf_state_year, by = join_by("state", "fiscal_year")) |>
+  # select variables in desired order
+  select(
+  # id variables
+  ssuid, pnum, monthcode, year, fiscal_year,
+  # demographics
+  tage, state, education, ethnicity, race, sex, citizenship, tceb, erelrpe, 
+  # purpose fulfillment indicators
+  in_purpose1, in_purpose1_alt, in_purpose2, in_purpose3, in_purpose4, purpose1, purpose1_alt, purpose2, purpose3, purpose4,
+  # state-level predictors
+  pct_unobligated, pct_program_mgmt, pct_basic_assistance, pct_work_ed,
+  pct_fatherhood_programs, pct_pregnancy_prevention, pct_child_welfare,
+  # individual predictors
+  received_job_training, hh_married_month, ejb1_scrnr,
+  # tanf variables
+  etanf_bmonth, rtanf_lcyr, etanf_emonth, etanf_covtyp, etanf_own,
+  rtanf_cflg, rtanf_mnyn, rtanf_yryn, ttanf_amt,
+  # weighting and sampling
+  gvarstr, wpfinwgt, ghlfsam
+  ) |>
+  # rename variables
+  rename(
+    employed = ejb1_scrnr,
+    household_id = ssuid,
+    month = monthcode,
+    age = tage,
+    total_children = tceb,
+    tanf_begin_month = etanf_bmonth,
+    tanf_initial_year = rtanf_lcyr,
+    tanf_end_month = etanf_emonth,
+    tanf_coverage_type = etanf_covtyp,
+    tanf_owner = etanf_own,
+    tanf_continue_flag = rtanf_cflg,
+    tanf_received_month = rtanf_mnyn,
+    tanf_received_year = rtanf_yryn,
+    tanf_amt_received = ttanf_amt,
+    relationship = erelrpe
+  ) |>
+  mutate(
+    tanf_coverage_type = case_match(
+      tanf_coverage_type,
+      1 ~ "Only children",
+      2 ~ "Only a pregnant woman",
+      3 ~ "Both children and adults"
+    ),
+    tanf_continue_flag = case_match(
+      tanf_continue_flag,
+      1 ~ "Receipt ended month 12",
+      2 ~ "Receipt ended after month 12 and before interview",
+      3 ~ "Receipt continued into interview month"
+    ),
+    tanf_received_month = if_else(tanf_received_month == 1, 1, 0),
+    tanf_received_year = if_else(tanf_received_year == 1, 1, 0),
+    is_householder = if_else(relationship == 1 | relationship == 2, 1, 0)
+  ) |>
+  # edit variable types
+  mutate_at(
+    c('month', 'year', 'fiscal_year', 'state', 'education', 'ethnicity', 'race',
+      'sex', 'citizenship', 'in_purpose1', 'in_purpose1_alt', 'in_purpose2', 'in_purpose3', 'in_purpose4',
+      'purpose1', 'purpose1_alt', 'purpose2', 'purpose3', 'purpose4', 'received_job_training',
+      'hh_married_month', 'tanf_begin_month', 'tanf_initial_year',
+      'tanf_end_month', 'tanf_coverage_type', 'tanf_owner',
+      'tanf_continue_flag', 'tanf_received_month',
+      'tanf_received_year'),
+    as.factor) |>
+  mutate_at(
+    c('household_id', 'pnum'), as.character
+  ) |>
+  mutate(tanf_amt_received = if_else(is.na(tanf_amt_received), 0, tanf_amt_received))
+
+# save data 
+setwd("C:/Users/shelb/OneDrive - Princeton University/Documents/Duke Course Folders/2324 Spring/STA493/tanf")
+write_csv(sipp_all_purposes, "data/sipp_all_purposes.csv")
+```
+

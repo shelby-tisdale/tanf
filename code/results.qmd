@@ -46,11 +46,11 @@ goal4_fit <- read_rds("data/goal_4_model_1.rds")
 
 **Notes (3/19/25)**
 
--   I ran two models, one with grouping at the state level and one without, neither had any significant predictors
+- I ran two models, one with grouping at the state level and one without, neither had any significant predictors
 
--   Though the sample size is large, the sample of children who do not live with their parents or a relative is super small
+- Though the sample size is large, the sample of children who do not live with their parents or a relative is super small
 
--   One potential direction for this is to run the model on the subset of children who do not live with a parent and assess whether they were housed with relatives afterward. I
+- One potential direction for this is to run the model on the subset of children who do not live with a parent and assess whether they were housed with relatives afterward. I
 
 ```{r}
 #| label: goal1-data
@@ -265,8 +265,8 @@ goal2_results
 
 **Notes**
 
--   Update quadratic effect of age
--   add covid indicator
+- Update quadratic effect of age
+- add covid indicator
 
 ```{r}
 #| label: goal3-data
@@ -485,16 +485,16 @@ goal4_results
 
 **Next steps:**
 
--   Finalize all models
+- Finalize all models
 
--   Write methods section
+- Write methods section
 
--   Visualize results
+- Visualize results
 
--   calculate percentage of variability for each model - look in Bayes rules book (setting up model with no predictors)
+- calculate percentage of variability for each model - look in Bayes rules book (setting up model with no predictors)
 
 **Takeaways:**
 
--   overarching themes
+- overarching themes
 
--   conclusions from models
+- conclusions from models
