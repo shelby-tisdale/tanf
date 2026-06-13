@@ -1,0 +1,288 @@
+---
+title: "Goal 1"
+author: "Shelby Tisdale"
+format: html
+editor: visual
+---
+
+# Load Data and Packages
+
+```{r}
+#| label: load-packages
+
+library(tidyverse)
+library(data.table)
+library(bit64)
+library(janitor)
+library(gt)
+library(gtsummary)
+library(rstanarm)
+library(bayesplot)
+library(tidybayes)
+library(tidymodels)
+library(bayesrules)
+library(broom.mixed)
+```
+
+```{r}
+#| label: load-full-data
+setwd("~/Duke Course Folders/2324 Spring/STA493/tanf")
+all_goals <- read_csv("data/sipp_all_goals.csv")
+```
+
+# Goal 1
+
+**Goal 1:** Provide assistance to needy families so that children can be cared for in their own homes or in the homes of relatives.
+
+**Criteria:** This goal is fulfilled for a given household and month if all children in the household have at least one relative in the household.
+
+**Model:** This model will evaluate the impacts of state-level unobligated funds on household-level fulfillment of TANF Goal 1.
+
+## Aggregate Dataset to Household-Year Level
+
+- Should this be aggregated to the Household-year or Household-month Level?
+
+  - I'm thinking household year.
+
+- Should I include poverty status or income as a covariate, given that all individuals in the sample are in poverty? Should I change the sample to include people of different all income levels? My initial thoughts are that since the only people eligible for TANF are families in poverty, this is who we should model for.
+
+  - What should I control for?
+  - household level demographics - householder
+
+- look at how unobligated funds change year to year
+
+```{r}
+
+# create race of householder variables and goal1 variable
+hh_demogs <- all_goals |>
+  filter(is_householder == 1) |>
+  filter(in_goal4 == 1) |>
+  select(household_id, state, race, fiscal_year) |>
+  distinct() |>
+  mutate(
+    race = factor(race),
+    race = fct_collapse(
+      race,
+      "White" = c("White"),
+      "Black" = c("Black", "Black-AIAN", "White-Black"),
+      "AIAN" = c("AIAN", "White-AIAN"),
+      "Asian" = c("Asian", "White-Asian"),
+      "Other" = c("Other", "HP")
+    ),
+   race = fct_relevel(race, c("White", "Black", "Asian", "AIAN", "Other"))
+  ) |>
+  distinct() |>
+  group_by(household_id, state, fiscal_year) |>
+  summarize(race = first(race), .groups = "drop")
+
+goal1 <- all_goals |>
+  # selects all households in goal 1 universe
+  filter(in_goal1 == 1) |>
+  # select relevant variables
+  select(household_id, state, fiscal_year, pct_unobligated, pct_basic_assistance, pct_fatherhood_programs, pct_child_welfare, pct_foster, goal1, tanf_amt_received, party) |>
+  group_by(household_id, state, goal1, fiscal_year) |>
+  # summary variables
+  mutate(
+    # amount of tanf received during year
+    tanf_amt_received = sum(tanf_amt_received)/100) |>
+  ungroup() |>
+  distinct() |>
+  left_join(hh_demogs, by = c("household_id", "state", "fiscal_year")) |>
+  mutate(pct_unobligated = pct_unobligated*100,
+         pct_basic_assistance = pct_basic_assistance*100,
+         pct_fatherhood_programs = pct_fatherhood_programs*100,
+         pct_child_welfare = pct_child_welfare*100,
+         pct_foster = pct_foster*100,
+         is_covid = if_else(fiscal_year >= 2020, 1, 0)) |>
+  filter(!is.na(goal1)) |>
+  group_by(household_id, state, fiscal_year, pct_unobligated, pct_basic_assistance, pct_fatherhood_programs, pct_child_welfare, tanf_amt_received, party, race, is_covid) |>
+  summarize(goal1 = min(goal1, na.rm = TRUE), .groups = "drop")
+
+saveRDS(goal1, "data/goal1.rds")
+
+goal1 |>
+  count(goal1)
+```
+
+## Table 1
+
+## EDA
+
+## Modeling
+
+**Note:** Aggregate to household level?
+
+Let $Y_{ij1}$ denote whether or not household $i$ in state $j$ met the criteria for Goal 1.
+
+$$ Y_{ij1} = \begin{cases} 1 & \text{yes} \\ 0 & \text{no} \end{cases} $$
+
+```{r}
+set.seed(812)
+
+goal1_split <- initial_split(goal1)
+goal1_train <- training(goal1_split)
+goal1_test <- testing(goal1_split)
+
+# tune prior
+goal_1_model_1_prior <- stan_glmer(
+  goal1 ~ pct_unobligated + pct_basic_assistance + pct_fatherhood_programs + pct_child_welfare + tanf_amt_received + is_covid +  race + (1 | household_id) + (1 | state),
+  data = goal1_train, family = binomial,
+  # https://www.aecf.org/blog/child-welfare-and-foster-care-statistics#:~:text=Children%20Entering%20Foster%20Care,care%20by%20race%20and%20ethnicity
+  # 3/1000 children in foster care
+  prior_intercept = normal(5.81, 1.5, autoscale = TRUE),
+  prior = normal(0, 2.5, autoscale = TRUE),
+  prior_covariance = decov(reg = 1, conc = 1, shape = 1, scale = 1),
+  chain = 10, iter = 10000, seed = 12345,
+  prior_PD = TRUE)
+
+
+# summarize prior
+prior_summary(goal_1_model_1_prior_train)
+tidy(goal_1_model_1_prior_train)
+
+# model results
+goal_1_model_1 <- update(goal_1_model_1_prior, prior_PD = FALSE)
+
+goal1_model1_summary <- tidy(goal_1_model_1, effects = "fixed", conf.int = TRUE, conf.level = .80)
+goal1_model1_summary_or <- goal1_model1_summary |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high),
+         odd_ratio = format(odd_ratio, scientific = F),
+         conf.low_or = format(conf.low_or, scientific = F),
+         conf.high_or = format(conf.high_or, scientific = F)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or)
+
+saveRDS(goal_1_model_1, "data/goal1_model1.rds")
+# goal_1_model_1 <- readRDS("data/goal1_model1.rds")
+params <- get_variables(goal_1_model_1)
+
+# model diagnostics
+for (i in 1:length(params)) {
+  print(mcmc_trace(goal_1_model_1, pars = params[[i]]))
+}
+
+for (i in 1:length(params)) {
+  print(mcmc_dens_overlay(goal_1_model_1, pars = params[[i]]))
+}
+
+for (i in 1:length(params)) {
+  print(mcmc_acf(goal_1_model_1, pars = params[[i]]))
+}
+
+neff_ratio(goal_1_model_1)
+rhat(goal_1_model_1)
+prop_goal3 <- function(x){mean(x == 1)}
+pp_check(goal_1_model_1, nreps = 100, plotfun = "stat", stat = "prop_goal3")
+
+# classify with testing data
+# posterior predictive models
+goal1_pred1 <- posterior_predict(goal_1_model_1, newdata = drop_na(goal1_test))
+goal1_classifications <- goal1_test |>
+  drop_na() |>
+  mutate(goal1_prob = colMeans(goal1_pred1),
+         goal1_class_1 = as.numeric(goal1_prob >= 0.5)) |>
+  select(goal1_prob, goal1_class_1, goal1)
+
+# confusion matrix
+goal1_classifications |>
+  tabyl(goal1, goal1_class_1) |>
+  adorn_totals(c("row", "col"))
+
+goal1_class_summary <- classification_summary(
+  model = goal_1_model_1, data = goal1_test |> drop_na(), cutoff = 0.5)
+
+# specificity: of the households that do not meet goal1, model correctly classifies __ percent.
+# sensitivity: of the households that do meet goal4, model correctly classifies __ percent.
+# a total __ percent of households are correctly classified by this model.
+goal1_class_summary$confusion_matrix
+goal1_class_summary$accuracy_rates
+```
+
+# Pivot to cohort year structure
+
+```{r}
+
+# evaluate at the child level instead of household level
+# use race of child - then we can't use direct cash assistance
+
+set.seed(812)
+
+goal1 <- goal1 |> mutate(goal1 = if_else(goal1 == 0, 0, 1),
+                         raceBlack = if_else(race == "Black", 1, 0))
+
+goal1_split <- initial_split(goal1)
+goal1_train <- training(goal1_split)
+goal1_test <- testing(goal1_split)
+
+# tune prior
+# removed political party variable
+goal_1_model_2_prior <- stan_glmer(
+  goal1 ~ raceBlack + sex + age + pct_unobligated + pct_basic_assistance + pct_fatherhood_programs + pct_child_welfare + pct_foster + is_covid + (1 | fiscal_year) + (1 | state),
+  data = goal1_train, family = binomial,
+  # https://www.aecf.org/blog/child-welfare-and-foster-care-statistics#:~:text=Children%20Entering%20Foster%20Care,care%20by%20race%20and%20ethnicity
+  # 3/1000 children in foster care
+  prior_intercept = normal(5.81, 1.5, autoscale = TRUE),
+  prior = normal(0, 2.5, autoscale = TRUE),
+  prior_covariance = decov(reg = 1, conc = 1, shape = 1, scale = 1),
+  chain = 10, iter = 10000, seed = 12345,
+  prior_PD = TRUE)
+
+# summarize prior
+prior_summary(goal_1_model_2_prior)
+tidy(goal_1_model_2_prior)
+
+# model results
+goal_1_model_2 <- update(goal_1_model_2_prior, prior_PD = FALSE)
+
+goal1_model2_summary <- tidy(goal_1_model_2, effects = "fixed", conf.int = TRUE, conf.level = .80)
+goal1_model2_summary_or <- goal1_model2_summary |>
+  mutate(odd_ratio = exp(estimate),
+         conf.low_or = exp(conf.low),
+         conf.high_or = exp(conf.high),
+         odd_ratio = format(odd_ratio, scientific = F),
+         conf.low_or = format(conf.low_or, scientific = F),
+         conf.high_or = format(conf.high_or, scientific = F)
+         ) |>
+  select(term, odd_ratio, conf.low_or, conf.high_or)
+
+saveRDS(goal_1_model_2, "data/goal1_model2.rds")
+```
+
+```{r}
+#| label: roc-curve
+
+library(pROC)
+
+# Assuming your fitted model is named 'bayes_model' and your test data is 'test_data'
+# Generate predicted probabilities
+pred_probs1 <- posterior_linpred(goal1_fit, newdata = goal1_test |> drop_na(), transform = TRUE)
+
+# Obtain the mean predicted probability for each observation
+mean_pred_probs1 <- apply(pred_probs, 2, mean)
+
+goal1_test1 <- goal1_test |> drop_na()
+true_labels1 <- goal1_test$goal1
+roc_obj1 <- roc(true_labels1, mean_pred_probs1)
+
+# Plot ROC curve
+plot(roc_obj1, main = "ROC Curve for TANF Goal 1 Model (AUC = 0.674)", col = "blue", lwd = 2)
+roc_data1 <- data.frame(
+  FPR = rev(roc_obj1$specificities),  # False Positive Rate
+  TPR = rev(roc_obj1$sensitivities)   # True Positive Rate
+)
+ggplot(roc_data1, aes(x = FPR, y = TPR)) +
+  geom_line(color = "blue", size = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +  # Add diagonal line
+  labs(title = "ROC Curve for Bayesian Logistic Model",
+       x = "False Positive Rate (FPR)",
+       y = "True Positive Rate (TPR)") +
+  theme_minimal()
+
+# Compute AUC
+auc_value1 <- auc(roc_obj1)
+print(paste("Area Under the Curve (AUC):", auc_value1))
+```
+
+# Robustness checks
